@@ -24,6 +24,8 @@ public enum BlockFlag{
     drill,
     /** Force projector block. */
     shield,
+    /**Wall of defensive structure */
+    wall,
 
     //special, internal identifiers
     launchPad,
@@ -37,5 +39,5 @@ public enum BlockFlag{
     public final static BlockFlag[] all = values();
 
     /** Values for logic only. Filters out some internal flags. */
-    public final static BlockFlag[] allLogic = {core, storage, generator, turret, factory, repair, battery, reactor, drill, shield};
+    public final static BlockFlag[] allLogic = {core, storage, generator, turret, factory, repair, battery, reactor, drill, shield, wall};
 }

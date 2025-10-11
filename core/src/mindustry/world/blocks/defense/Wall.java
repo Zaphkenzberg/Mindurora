@@ -38,6 +38,7 @@ public class Wall extends Block{
         drawDisabled = false;
         crushDamageMultiplier = 5f;
         priority = TargetPriority.wall;
+        flags = arc.struct.EnumSet.of(BlockFlag.wall);
 
         //it's a wall of course it's supported everywhere
         envEnabled = Env.any;
