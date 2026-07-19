@@ -97,7 +97,6 @@ public class Sector{
         return (preset != null && preset.overrideLaunchDefaults) ? preset.allowLaunchLoadout : planet.allowLaunchLoadout;
     }
     private String infoKey(){
-        Log.info("DEBUG campaignSlot=" + campaignSlot + " for sector " + planet.name + "-" + id);
         return (campaignSlot == 0 ? "" : "c2-") + planet.name + "-s-" + id + "-info";
     }
 

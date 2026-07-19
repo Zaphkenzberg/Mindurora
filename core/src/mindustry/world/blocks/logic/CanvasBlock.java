@@ -24,7 +24,6 @@ import mindustry.world.meta.BlockFlag;
 
 import static mindustry.Vars.*;
 
-
 public class CanvasBlock extends Block{
     public float padding = 0f;
     public int canvasSize = 8;

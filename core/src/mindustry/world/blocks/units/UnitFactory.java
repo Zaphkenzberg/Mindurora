@@ -30,7 +30,6 @@ import mindustry.world.meta.*;
 
 import static mindustry.Vars.*;
 
-
 public class UnitFactory extends UnitBlock{
     public int[] capacities = {};
 

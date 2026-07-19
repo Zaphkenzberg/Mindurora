@@ -22,7 +22,6 @@ import mindustry.world.meta.*;
 
 import static mindustry.Vars.*;
 
-
 public class MessageBlock extends Block{
     //don't change this too much unless you want to run into issues with packet sizes
     public int maxTextLength = 220;

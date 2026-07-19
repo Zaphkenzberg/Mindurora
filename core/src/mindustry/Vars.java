@@ -246,7 +246,7 @@ public class Vars implements Loadable{
     public static final String schematicExtension = "msch";
     /** path to the java executable */
     public static String javaPath;
-    /** 2 camp **/
+    /** Multiplayer Campaigh **/
     public static int campaignSlot = 0;
 
     /** list of all locales that can be switched to */

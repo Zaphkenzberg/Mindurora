@@ -12,7 +12,7 @@ public enum BlockFlag{
     turret,
     /** A block that transforms resources. */
     factory,
-    /**Factory Units */
+    /** Factory Units */
     ufactory,
     /** Repair point. */
     repair,
@@ -28,15 +28,15 @@ public enum BlockFlag{
     drill,
     /** Force projector block. */
     shield,
-    /**Wall */
+    /** Wall */
     wall,
-    /**Overdrive  */
+    /** Overdrive  */
     overdrive,
-    /**Block Logic  */
+    /** Block Logic  */
     logic,
-    /**PowerNode */
+    /** PowerNode */
     powernode,
-    /**Transfer */
+    /** Transfer */
     transfer,
 
     //special, internal identifiers

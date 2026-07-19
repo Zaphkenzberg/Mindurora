@@ -137,8 +137,8 @@ public class MenuFragment{
         container.defaults().size(size).pad(5).padTop(4f);
 
         MobileButton
-                play = new MobileButton(Icon.play, "@campaign", () -> {switchCampaign(0); checkPlay(ui.planet::show);}),
-                multcamp = new MobileButton(Icon.play, "@multcamp", () -> {switchCampaign(1); checkPlay(ui.planet::show);}),
+            play = new MobileButton(Icon.play, "@campaign", () -> {switchCampaign(0); checkPlay(ui.planet::show);}),
+            multcamp = new MobileButton(Icon.play, "@multcamp", () -> {switchCampaign(1); checkPlay(ui.planet::show);}),
             custom = new MobileButton(Icon.rightOpenOut, "@customgame", () -> checkPlay(ui.custom::show)),
             maps = new MobileButton(Icon.download, "@loadgame", () -> checkPlay(ui.load::show)),
             join = new MobileButton(Icon.add, "@joingame", () -> checkPlay(ui.join::show)),
@@ -156,7 +156,6 @@ public class MenuFragment{
             container.add(join);
             container.add(custom);
             container.add(maps);
-
             // add odd custom buttons
             for(int i = 1; i < customs.size; i += 2){
                 container.add(customs.get(i));
@@ -209,11 +208,11 @@ public class MenuFragment{
             if(desktopButtons == null){
                 desktopButtons = Seq.with(
                     new MenuButton("@play", Icon.play,
-                            new MenuButton("@campaign", Icon.play, () -> {switchCampaign(0); checkPlay(ui.planet::show);}),
+                        new MenuButton("@campaign", Icon.play, () -> {switchCampaign(0); checkPlay(ui.planet::show);}),
+                        new MenuButton("@multcamp", Icon.play, () -> {switchCampaign(1); checkPlay(ui.planet::show);}),
                         new MenuButton("@joingame", Icon.add, () -> checkPlay(ui.join::show)),
                         new MenuButton("@customgame", Icon.terrain, () -> checkPlay(ui.custom::show)),
-                        new MenuButton("@loadgame", Icon.download, () -> checkPlay(ui.load::show)),
-                            new MenuButton("@multcamp", Icon.play, () -> {switchCampaign(1); checkPlay(ui.planet::show);})
+                        new MenuButton("@loadgame", Icon.download, () -> checkPlay(ui.load::show))
                     ),
                     new MenuButton("@database.button", Icon.menu,
                         new MenuButton("@schematics", Icon.paste, ui.schematics::show),
@@ -254,22 +253,18 @@ public class MenuFragment{
         saveDirectory = dataDirectory.child(slot == 0 ? "saves/" : "saves2/");
         universe.reloadForSlot();
 
-        //спочатку обнуляємо старі посилання (інакше saves.load() їх не почистить сам)
         for (Planet p : content.planets()) {
             for (Sector s : p.sectors) s.save = null;
         }
 
-        //пересканувати нову папку й правильно призначити sector.save для знайдених файлів
         control.saves.load();
 
-        //перечитати метадані (hasCore, waves тощо) під новим слотом
         for (Planet p : content.planets()) {
             for (Sector s : p.sectors) s.loadInfo();
-
+        }
             content.each(c -> {
                 if (c instanceof UnlockableContent u) u.reloadUnlock();
             });
-        }
     }
     private void fadeInMenu(){
         submenu.clearActions();

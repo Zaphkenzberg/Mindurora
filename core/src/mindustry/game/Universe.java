@@ -343,7 +343,7 @@ public class Universe{
         turn = Core.settings.getInt(key("turn"));
     }
 
-    /** Reloads campaign counters for the current campaign slot. Call after switching Vars.campaignSlot. */
+    /** Reloads campaign counters for the current campaign slot. Call after switching campaignSlot. */
     public void reloadForSlot(){
         load();
     }

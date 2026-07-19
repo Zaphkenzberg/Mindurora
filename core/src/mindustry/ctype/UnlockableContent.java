@@ -257,7 +257,6 @@ public abstract class UnlockableContent extends MappableContent{
         }
     }
     protected String unlockKey(){
-        Log.info("DEBUG unlockKey campaignSlot=" + campaignSlot + " for " + name);
         return (campaignSlot == 0 ? "" : "c2-") + name + "-unlocked";
     }
 

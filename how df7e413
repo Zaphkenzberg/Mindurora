@@ -1,0 +1,48 @@
+[33mcommit df7e4133dc8555b9d2335ddeaa314053b2eeeb1b[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmaster[m[33m)[m
+Author: Zaph <semechko.xd@email.com>
+Date:   Sun Jul 19 20:29:57 2026 +0200
+
+    AURORA
+
+ core/src/mindustry/Vars.java                       |  2 [32m++[m
+ core/src/mindustry/ctype/UnlockableContent.java    | 15 [32m+++++++[m[31m---[m
+ core/src/mindustry/game/Universe.java              | 16 [32m++++++++[m[31m---[m
+ core/src/mindustry/type/Sector.java                | 11 [32m+++++[m[31m---[m
+ core/src/mindustry/ui/fragments/MenuFragment.java  | 33 [32m++++++++++++++++++++[m[31m--[m
+ .../world/blocks/campaign/LandingPad.java          |  2 [32m++[m
+ .../mindustry/world/blocks/campaign/LaunchPad.java |  2 [32m+[m[31m-[m
+ .../world/blocks/defense/MendProjector.java        |  2 [32m+[m[31m-[m
+ .../world/blocks/defense/OverdriveProjector.java   |  1 [32m+[m
+ .../world/blocks/defense/RegenProjector.java       |  2 [32m+[m[31m-[m
+ .../mindustry/world/blocks/defense/ShockMine.java  |  2 [32m++[m
+ .../world/blocks/distribution/Conveyor.java        |  1 [32m+[m
+ .../world/blocks/distribution/ItemBridge.java      |  1 [32m+[m
+ .../world/blocks/distribution/Junction.java        |  1 [32m+[m
+ .../world/blocks/distribution/MassDriver.java      |  1 [32m+[m
+ .../world/blocks/distribution/OverflowGate.java    |  1 [32m+[m
+ .../world/blocks/distribution/Router.java          |  1 [32m+[m
+ .../world/blocks/distribution/Sorter.java          |  1 [32m+[m
+ .../world/blocks/distribution/StackConveyor.java   |  1 [32m+[m
+ .../src/mindustry/world/blocks/liquid/Conduit.java |  2 [32m++[m
+ .../world/blocks/liquid/LiquidJunction.java        |  1 [32m+[m
+ .../world/blocks/liquid/LiquidRouter.java          |  2 [32m++[m
+ .../mindustry/world/blocks/logic/CanvasBlock.java  |  3 [32m++[m
+ .../mindustry/world/blocks/logic/LogicBlock.java   |  1 [32m+[m
+ .../mindustry/world/blocks/logic/LogicDisplay.java |  1 [32m+[m
+ .../mindustry/world/blocks/logic/MemoryBlock.java  |  1 [32m+[m
+ .../mindustry/world/blocks/logic/MessageBlock.java |  2 [32m++[m
+ .../mindustry/world/blocks/logic/SwitchBlock.java  |  1 [32m+[m
+ .../world/blocks/logic/TileableLogicDisplay.java   |  2 [32m++[m
+ .../world/blocks/payloads/PayloadConveyor.java     |  1 [32m+[m
+ .../src/mindustry/world/blocks/power/BeamNode.java |  2 [32m++[m
+ .../mindustry/world/blocks/power/PowerDiode.java   |  1 [32m+[m
+ .../mindustry/world/blocks/power/PowerNode.java    |  1 [32m+[m
+ .../world/blocks/power/SolarGenerator.java         |  1 [32m+[m
+ .../world/blocks/production/Incinerator.java       |  1 [32m+[m
+ .../mindustry/world/blocks/production/Pump.java    |  1 [32m+[m
+ .../world/blocks/production/Separator.java         |  1 [32m+[m
+ .../mindustry/world/blocks/storage/Unloader.java   |  3 [32m+[m[31m-[m
+ .../world/blocks/units/Reconstructor.java          |  3 [32m++[m
+ .../mindustry/world/blocks/units/UnitFactory.java  |  2 [32m++[m
+ core/src/mindustry/world/meta/BlockFlag.java       | 17 [32m+++++++++[m[31m--[m
+ 41 files changed, 124 insertions(+), 22 deletions(-)
