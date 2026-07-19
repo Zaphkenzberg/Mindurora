@@ -56,6 +56,7 @@ public class LogicDisplay extends Block{
         group = BlockGroup.logic;
         drawDisabled = false;
         envEnabled = Env.any;
+        flags = arc.struct.EnumSet.of(BlockFlag.logic);
     }
 
     @Override

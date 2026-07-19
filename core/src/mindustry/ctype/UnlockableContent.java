@@ -209,11 +209,10 @@ public abstract class UnlockableContent extends MappableContent{
         return !isHidden();
     }
 
-    /** Makes this piece of content unlocked; if it already unlocked, nothing happens. */
     public void unlock(){
         if(!unlocked && !alwaysUnlocked){
             unlocked = true;
-            Core.settings.put(name + "-unlocked", true);
+            Core.settings.put(unlockKey(), true);
 
             onUnlock();
             Events.fire(new UnlockEvent(this));
@@ -224,7 +223,7 @@ public abstract class UnlockableContent extends MappableContent{
     public void quietUnlock(){
         if(!unlocked()){
             unlocked = true;
-            Core.settings.put(name + "-unlocked", true);
+            Core.settings.put(unlockKey(), true);
         }
     }
 
@@ -254,8 +253,16 @@ public abstract class UnlockableContent extends MappableContent{
     public void clearUnlock(){
         if(unlocked){
             unlocked = false;
-            Core.settings.put(name + "-unlocked", false);
+            Core.settings.put(unlockKey(), false);
         }
+    }
+    protected String unlockKey(){
+        Log.info("DEBUG unlockKey campaignSlot=" + campaignSlot + " for " + name);
+        return (campaignSlot == 0 ? "" : "c2-") + name + "-unlocked";
+    }
+
+    public void reloadUnlock(){
+        unlocked = Core.settings.getBool(unlockKey(), false);
     }
 
     public boolean locked(){

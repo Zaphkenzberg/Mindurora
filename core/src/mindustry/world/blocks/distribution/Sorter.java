@@ -31,6 +31,7 @@ public class Sorter extends Block{
         unloadable = false;
         saveConfig = true;
         clearOnDoubleTap = true;
+        flags = arc.struct.EnumSet.of(BlockFlag.transfer);
 
         config(Item.class, (SorterBuild tile, Item item) -> tile.sortItem = item);
         configClear((SorterBuild tile) -> tile.sortItem = null);

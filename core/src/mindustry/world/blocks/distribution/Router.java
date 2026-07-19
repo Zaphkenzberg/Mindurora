@@ -22,6 +22,7 @@ public class Router extends Block{
         group = BlockGroup.transportation;
         unloadable = false;
         noUpdateDisabled = true;
+        flags = arc.struct.EnumSet.of(BlockFlag.transfer);
     }
 
     public class RouterBuild extends Building implements ControlBlock{

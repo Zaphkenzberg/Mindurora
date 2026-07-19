@@ -34,6 +34,7 @@ public class PayloadConveyor extends Block{
         noUpdateDisabled = true;
         acceptsUnitPayloads = true;
         priority = TargetPriority.transport;
+        flags = arc.struct.EnumSet.of(BlockFlag.transfer);
         envEnabled |= Env.space | Env.underwater;
         sync = true;
         underBullets = true;

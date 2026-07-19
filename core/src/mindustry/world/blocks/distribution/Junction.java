@@ -22,6 +22,7 @@ public class Junction extends Block{
         group = BlockGroup.transportation;
         unloadable = false;
         noUpdateDisabled = true;
+        flags = arc.struct.EnumSet.of(BlockFlag.transfer);
     }
 
     @Override

@@ -20,8 +20,10 @@ import mindustry.graphics.*;
 import mindustry.logic.*;
 import mindustry.ui.*;
 import mindustry.world.*;
+import mindustry.world.meta.BlockFlag;
 
 import static mindustry.Vars.*;
+
 
 public class CanvasBlock extends Block{
     public float padding = 0f;
@@ -47,6 +49,7 @@ public class CanvasBlock extends Block{
         destructible = true;
         canOverdrive = false;
         solid = true;
+        flags = arc.struct.EnumSet.of(BlockFlag.logic);
 
         config(byte[].class, (CanvasBuild build, byte[] bytes) -> {
             if(build.data.length == bytes.length){

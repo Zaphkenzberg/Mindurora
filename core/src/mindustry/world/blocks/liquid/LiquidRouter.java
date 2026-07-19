@@ -3,6 +3,7 @@ package mindustry.world.blocks.liquid;
 import arc.graphics.g2d.*;
 import mindustry.gen.*;
 import mindustry.type.*;
+import mindustry.world.meta.BlockFlag;
 
 public class LiquidRouter extends LiquidBlock{
     public float liquidPadding = 0f;
@@ -13,6 +14,7 @@ public class LiquidRouter extends LiquidBlock{
         noUpdateDisabled = true;
         canOverdrive = false;
         floating = true;
+        flags = arc.struct.EnumSet.of(BlockFlag.transfer);
     }
 
     @Override

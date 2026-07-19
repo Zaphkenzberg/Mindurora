@@ -19,6 +19,7 @@ public class MemoryBlock extends Block{
         drawDisabled = false;
         envEnabled = Env.any;
         canOverdrive = false;
+        flags = arc.struct.EnumSet.of(BlockFlag.logic);
     }
 
     @Override

@@ -334,13 +334,21 @@ public class Universe{
     }
 
     private void save(){
-        Core.settings.put("utimei", seconds);
-        Core.settings.put("turn", turn);
+        Core.settings.put(key("utimei"), seconds);
+        Core.settings.put(key("turn"), turn);
     }
 
     private void load(){
-        seconds = Core.settings.getInt("utimei");
-        turn = Core.settings.getInt("turn");
+        seconds = Core.settings.getInt(key("utimei"));
+        turn = Core.settings.getInt(key("turn"));
+    }
+
+    /** Reloads campaign counters for the current campaign slot. Call after switching Vars.campaignSlot. */
+    public void reloadForSlot(){
+        load();
+    }
+    private String key(String base){
+        return campaignSlot == 0 ? base : "c2-" + base;
     }
 
 }

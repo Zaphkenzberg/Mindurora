@@ -10,6 +10,7 @@ import mindustry.entities.bullet.*;
 import mindustry.gen.*;
 import mindustry.graphics.*;
 import mindustry.world.*;
+import mindustry.world.meta.BlockFlag;
 
 public class ShockMine extends Block{
     public final int timerDamage = timers++;
@@ -32,6 +33,7 @@ public class ShockMine extends Block{
         destructible = true;
         solid = false;
         targetable = false;
+        flags = arc.struct.EnumSet.of(BlockFlag.wall);
     }
 
     public class ShockMineBuild extends Building{

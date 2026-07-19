@@ -40,7 +40,8 @@ public class Unloader extends Block{
         noUpdateDisabled = true;
         clearOnDoubleTap = true;
         unloadable = false;
-
+        flags = arc.struct.EnumSet.of(BlockFlag.transfer);
+        
         config(Item.class, (UnloaderBuild tile, Item item) -> tile.sortItem = item);
         configClear((UnloaderBuild tile) -> tile.sortItem = null);
     }

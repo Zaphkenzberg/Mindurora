@@ -50,6 +50,7 @@ public class PowerNode extends PowerBlock{
         drawDisabled = false;
         envEnabled |= Env.space;
         destructible = true;
+        flags = arc.struct.EnumSet.of(BlockFlag.powernode);
 
         //nodes do not even need to update
         update = false;

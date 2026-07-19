@@ -28,6 +28,7 @@ import mindustry.world.meta.*;
 
 import static mindustry.Vars.*;
 
+
 public class LandingPad extends Block{
     static ObjectMap<Item, Seq<LandingPadBuild>> waiting = new ObjectMap<>();
     static long lastUpdateId = -1;
@@ -64,6 +65,7 @@ public class LandingPad extends Block{
         canOverdrive = false; //overdriving can't do anything meaningful besides decrease cooldown, which is very small anyway, so don't bother
         emitLight = true;
         lightRadius = 90f;
+        flags = EnumSet.of(BlockFlag.storage);
 
         config(Item.class, (LandingPadBuild build, Item item) -> {
             if(!build.accessible()) return;

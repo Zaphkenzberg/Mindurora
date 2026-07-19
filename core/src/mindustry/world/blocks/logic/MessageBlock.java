@@ -22,6 +22,7 @@ import mindustry.world.meta.*;
 
 import static mindustry.Vars.*;
 
+
 public class MessageBlock extends Block{
     //don't change this too much unless you want to run into issues with packet sizes
     public int maxTextLength = 220;
@@ -35,6 +36,7 @@ public class MessageBlock extends Block{
         group = BlockGroup.logic;
         drawDisabled = false;
         envEnabled = Env.any;
+        flags = arc.struct.EnumSet.of(BlockFlag.logic);
 
         config(String.class, (MessageBuild tile, String text) -> {
             if(text.length() > maxTextLength || !accessible()){

@@ -19,6 +19,7 @@ import mindustry.type.*;
 import mindustry.world.*;
 import mindustry.world.blocks.*;
 import mindustry.world.blocks.distribution.*;
+import mindustry.world.meta.BlockFlag;
 
 import static mindustry.Vars.*;
 import static mindustry.type.Liquid.*;
@@ -53,6 +54,7 @@ public class Conduit extends LiquidBlock implements Autotiler{
         noUpdateDisabled = true;
         canOverdrive = false;
         priority = TargetPriority.transport;
+        flags = arc.struct.EnumSet.of(BlockFlag.transfer);
     }
 
     @Override

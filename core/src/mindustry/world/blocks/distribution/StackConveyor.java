@@ -53,6 +53,7 @@ public class StackConveyor extends Block implements Autotiler{
         conveyorPlacement = true;
         underBullets = true;
         priority = TargetPriority.transport;
+        flags = arc.struct.EnumSet.of(BlockFlag.transfer);
 
         ambientSound = Sounds.conveyor;
         ambientSoundVolume = 0.004f;

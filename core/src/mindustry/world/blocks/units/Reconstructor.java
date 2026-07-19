@@ -29,6 +29,7 @@ import mindustry.world.meta.*;
 
 import static mindustry.Vars.*;
 
+
 public class Reconstructor extends UnitBlock{
     public float constructTime = 60 * 2;
     public Seq<UnitType[]> upgrades = new Seq<>();
@@ -41,6 +42,8 @@ public class Reconstructor extends UnitBlock{
         commandable = true;
         ambientSound = Sounds.respawning;
         configurable = true;
+        flags = arc.struct.EnumSet.of(BlockFlag.ufactory);
+
         config(UnitCommand.class, (ReconstructorBuild build, UnitCommand command) -> build.command = command);
         configClear((ReconstructorBuild build) -> build.command = null);
     }

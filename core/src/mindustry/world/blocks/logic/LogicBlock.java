@@ -49,6 +49,7 @@ public class LogicBlock extends Block{
         group = BlockGroup.logic;
         schematicPriority = 5;
         ignoreResizeConfig = true;
+        flags = arc.struct.EnumSet.of(BlockFlag.logic);
 
         //universal, no real requirements
         envEnabled = Env.any;

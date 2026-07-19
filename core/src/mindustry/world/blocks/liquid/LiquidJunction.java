@@ -11,6 +11,7 @@ public class LiquidJunction extends LiquidBlock{
     public LiquidJunction(String name){
         super(name);
         floating = true;
+        flags = arc.struct.EnumSet.of(BlockFlag.transfer);
     }
 
     @Override

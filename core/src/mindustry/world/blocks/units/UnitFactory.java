@@ -30,6 +30,7 @@ import mindustry.world.meta.*;
 
 import static mindustry.Vars.*;
 
+
 public class UnitFactory extends UnitBlock{
     public int[] capacities = {};
 
@@ -48,6 +49,7 @@ public class UnitFactory extends UnitBlock{
         regionRotated1 = 1;
         commandable = true;
         ambientSound = Sounds.respawning;
+        flags = arc.struct.EnumSet.of(BlockFlag.ufactory);
 
         config(Integer.class, (UnitFactoryBuild build, Integer i) -> {
             if(!configurable) return;

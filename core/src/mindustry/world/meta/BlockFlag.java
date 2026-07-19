@@ -12,8 +12,12 @@ public enum BlockFlag{
     turret,
     /** A block that transforms resources. */
     factory,
+    /**Factory Units */
+    ufactory,
     /** Repair point. */
     repair,
+    /** Block Repair point. */
+    brepair,
     /** Block that stored power for resupply. */
     battery,
     /** Any reactor block. */
@@ -24,8 +28,16 @@ public enum BlockFlag{
     drill,
     /** Force projector block. */
     shield,
-    /**Wall of defensive structure */
+    /**Wall */
     wall,
+    /**Overdrive  */
+    overdrive,
+    /**Block Logic  */
+    logic,
+    /**PowerNode */
+    powernode,
+    /**Transfer */
+    transfer,
 
     //special, internal identifiers
     launchPad,
@@ -33,11 +45,10 @@ public enum BlockFlag{
     unitAssembler,
     hasFogRadius,
     steamVent,
-    blockRepair,
     synced;
 
     public final static BlockFlag[] all = values();
 
     /** Values for logic only. Filters out some internal flags. */
-    public final static BlockFlag[] allLogic = {core, storage, generator, turret, factory, repair, battery, reactor, drill, shield, wall};
+    public final static BlockFlag[] allLogic = {core, storage, generator, turret, factory, ufactory, repair, brepair, battery, reactor, drill, shield, wall, overdrive, logic, powernode, transfer};
 }

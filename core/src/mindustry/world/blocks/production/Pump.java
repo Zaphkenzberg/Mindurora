@@ -28,6 +28,7 @@ public class Pump extends LiquidBlock{
         group = BlockGroup.liquids;
         floating = true;
         envEnabled = Env.terrestrial;
+        flags = arc.struct.EnumSet.of(BlockFlag.drill);
     }
 
     @Override

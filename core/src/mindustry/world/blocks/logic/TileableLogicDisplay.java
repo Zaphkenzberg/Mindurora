@@ -14,6 +14,7 @@ import mindustry.graphics.*;
 import mindustry.logic.*;
 import mindustry.world.*;
 import mindustry.world.blocks.*;
+import mindustry.world.meta.BlockFlag;
 
 import static mindustry.Vars.*;
 
@@ -32,6 +33,7 @@ public class TileableLogicDisplay extends LogicDisplay{
         super(name);
 
         displaySize = 32;
+        flags = arc.struct.EnumSet.of(BlockFlag.logic);
     }
 
     public static void linkDisplays(TileableLogicDisplayBuild start){

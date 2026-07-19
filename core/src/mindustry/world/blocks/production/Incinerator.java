@@ -21,6 +21,7 @@ public class Incinerator extends Block{
         hasLiquids = true;
         update = true;
         solid = true;
+        flags = arc.struct.EnumSet.of(BlockFlag.transfer);
     }
 
     public class IncineratorBuild extends Building{

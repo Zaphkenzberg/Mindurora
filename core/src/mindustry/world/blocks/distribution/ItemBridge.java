@@ -58,6 +58,7 @@ public class ItemBridge extends Block{
         //disabled as to not be annoying
         allowConfigInventory = false;
         priority = TargetPriority.transport;
+        flags = arc.struct.EnumSet.of(BlockFlag.transfer);
 
         //point2 config is relative
         config(Point2.class, (ItemBridgeBuild tile, Point2 i) -> tile.link = Point2.pack(i.x + tile.tileX(), i.y + tile.tileY()));

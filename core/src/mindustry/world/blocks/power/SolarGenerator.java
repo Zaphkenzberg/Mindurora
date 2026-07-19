@@ -13,6 +13,7 @@ public class SolarGenerator extends PowerGenerator{
         //remove the BlockFlag.generator flag to make this a lower priority target than other generators.
         flags = EnumSet.of();
         envEnabled = Env.any;
+        flags = arc.struct.EnumSet.of(BlockFlag.generator);
     }
 
     @Override

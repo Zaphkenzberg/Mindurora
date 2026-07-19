@@ -24,6 +24,7 @@ public class PowerDiode extends Block{
         noUpdateDisabled = true;
         schematicPriority = 10;
         envEnabled |= Env.space;
+        flags = arc.struct.EnumSet.of(BlockFlag.powernode);
     }
 
     @Override

@@ -40,7 +40,7 @@ public class MendProjector extends Block{
         lightRadius = 50f;
         suppressable = true;
         envEnabled |= Env.space;
-        flags = EnumSet.of(BlockFlag.blockRepair);
+        flags = arc.struct.EnumSet.of(BlockFlag.brepair);
     }
 
     @Override

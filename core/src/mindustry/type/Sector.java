@@ -96,15 +96,18 @@ public class Sector{
     public boolean allowLaunchLoadout(){
         return (preset != null && preset.overrideLaunchDefaults) ? preset.allowLaunchLoadout : planet.allowLaunchLoadout;
     }
+    private String infoKey(){
+        Log.info("DEBUG campaignSlot=" + campaignSlot + " for sector " + planet.name + "-" + id);
+        return (campaignSlot == 0 ? "" : "c2-") + planet.name + "-s-" + id + "-info";
+    }
 
     public void saveInfo(){
-        Core.settings.putJson(planet.name + "-s-" + id + "-info", info);
+        Core.settings.putJson(infoKey(), info);
     }
 
     public void loadInfo(){
-        info = Core.settings.getJson(planet.name + "-s-" + id + "-info", SectorInfo.class, SectorInfo::new);
+        info = Core.settings.getJson(infoKey(), SectorInfo.class, SectorInfo::new);
 
-        //fix an old naming bug; this doesn't happen with new saves, but old saves need manual fixes
         if(info.resources.contains(Blocks.water)){
             info.resources.remove(Blocks.water);
             info.resources.add(Liquids.water);
@@ -118,7 +121,7 @@ public class Sector{
     /** Removes any sector info. */
     public void clearInfo(){
         info = new SectorInfo();
-        Core.settings.remove(planet.name + "-s-" + id + "-info");
+        Core.settings.remove(infoKey());
     }
 
     public float getProductionScale(){

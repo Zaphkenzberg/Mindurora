@@ -46,7 +46,7 @@ public class RegenProjector extends Block{
         suppressable = true;
         envEnabled |= Env.space;
         rotateDraw = false;
-        flags = EnumSet.of(BlockFlag.blockRepair);
+        flags = arc.struct.EnumSet.of(BlockFlag.brepair);
     }
 
     @Override

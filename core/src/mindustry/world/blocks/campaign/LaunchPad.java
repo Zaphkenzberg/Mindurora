@@ -50,7 +50,7 @@ public class LaunchPad extends Block{
         solid = true;
         update = true;
         configurable = true;
-        flags = EnumSet.of(BlockFlag.launchPad);
+        flags = EnumSet.of(BlockFlag.launchPad, BlockFlag.storage);
     }
 
     @Override
