@@ -130,6 +130,7 @@ public class NetClient implements ApplicationListener{
             Time.runTask(3f, ui.loadfrag::hide);
 
             if(packet.reason != null){
+                if("closed".equals(packet.reason) && mindustry.AuroraNet.auroraClient()) return;
                 ui.showSmall(switch(packet.reason){
                     case "closed" -> "@disconnect.closed";
                     case "timeout" -> "@disconnect.timeout";

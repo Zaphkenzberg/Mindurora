@@ -1,5 +1,6 @@
 package mindustry.ui.dialogs;
 
+
 import arc.*;
 import arc.freetype.FreeTypeFontGenerator.*;
 import arc.graphics.*;
@@ -21,6 +22,7 @@ import mindustry.io.versions.*;
 import mindustry.net.*;
 import mindustry.net.Packets.*;
 import mindustry.ui.*;
+import mindustry.AuroraNet;
 
 import static mindustry.Vars.*;
 
@@ -586,6 +588,26 @@ public class JoinDialog extends BaseDialog{
     }
 
     public void connect(String ip, int port){
+        if(player.name.trim().isEmpty()){
+            ui.showInfo("@noname");
+            return;
+        }
+
+        ui.loadfrag.show("@connecting");
+
+        // AURORA: якщо за цією адресою живе Authority, заходимо в режим Aurora (планетний UI)
+        AuroraNet.probeAndJoin(ip, port, joined -> {
+            if(joined){
+                hide();
+                add.hide();
+            }else{
+                connectRaw(ip, port);
+            }
+        });
+    }
+
+    /** Звичайне підключення Mindustry (оригінальне тіло connect). */
+    public void connectRaw(String ip, int port){
         if(player.name.trim().isEmpty()){
             ui.showInfo("@noname");
             return;

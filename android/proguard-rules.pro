@@ -9,5 +9,6 @@
 -keepattributes Signature,*Annotation*,InnerClasses,EnclosingMethod
 
 -dontwarn javax.naming.**
+-dontwarn com.sun.net.httpserver.**
 
 #-printusage out.txt

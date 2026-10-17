@@ -126,6 +126,11 @@ public class PausedDialog extends BaseDialog{
 
     void showQuitConfirm(){
         Runnable quit = () -> {
+            if(AuroraNet.hosting){
+                hide();
+                AuroraNet.leave();   // зберегти -> залити -> звільнити -> закрити сервер -> список секторів
+                return;
+            }
             runExitSave();
             hide();
         };

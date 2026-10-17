@@ -59,6 +59,16 @@ public class Sector{
         return tmpSeq1;
     }
 
+    /** JSON SectorInfo в Authority. */
+    public @Nullable String exportInfo(){
+        return mindustry.io.JsonIO.json.toJson(info);
+    }
+
+    public void importInfo(String json){
+        info = mindustry.io.JsonIO.json.fromJson(SectorInfo.class, json);
+        saveInfo();
+    }
+
     public void near(Cons<Sector> cons){
         for(Ptile tile : tile.tiles){
             cons.get(planet.getSector(tile));
