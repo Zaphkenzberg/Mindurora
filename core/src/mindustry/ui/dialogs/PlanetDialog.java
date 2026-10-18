@@ -457,7 +457,7 @@
 
                             Color color =
                             // AURORA: everyone's bases in the normal color — Бази всіх гравців звичайним кольором
-                            sec.hasBase() || mindustry.AuroraNet.remoteBase(sec) ? Tmp.c2.set(Team.sharded.color).lerp(Team.crux.color, sec.hasEnemyBase() ? 0.5f : 0f) :
+                            sec.hasBase() || mindustry.AuroraNet.remoteBase(sec) ? Tmp.c2.set(mindustry.AuroraNet.baseColor).lerp(Team.crux.color, sec.hasEnemyBase() ? 0.5f : 0f) :
                             sec.preset != null && sec.preset.requireUnlock ?
                                 sec.preset.unlocked() ? Tmp.c2.set(Team.derelict.color).lerp(Color.white, Mathf.absin(Time.time, 10f, 1f)) :
                                 Color.gray :
@@ -553,7 +553,7 @@
                             (sec.preset != null && sec.preset.requireUnlock && sec.preset.unlocked() ? sec.preset.uiIcon : Fonts.getLargeIcon("terrain")) :
                             sec.preset != null && sec.preset.requireUnlock && sec.preset.locked() && sec.preset.techNode != null && (sec.preset.techNode.parent == null || !sec.preset.techNode.parent.content.locked()) ? Fonts.getLargeIcon("lock") :
                             preficon;
-                        var color = sec.isAttacked() ? Team.sharded.color : Color.white;
+                        var color = sec.isAttacked() ? mindustry.AuroraNet.baseColor : Color.white;
 
                         if(icon != null){
                             planets.drawPlane(sec, () -> {

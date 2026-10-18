@@ -29,14 +29,16 @@ public class AuroraMenuRenderer implements PlanetRenderer.PlanetInterfaceRendere
     final PlanetParams params = new PlanetParams();
     final FrameBuffer buffer = new FrameBuffer(2, 2);
     final Vec3 tmp = new Vec3(), tmp2 = new Vec3();
-    final Color shield = new Color(Team.sharded.color);
+    final Color shield = mindustry.AuroraNet.shieldColor;
     float radius = 100f;
 
     // Camera control: yaw/pitch in degrees, inertia after release — Керування камерою: yaw/pitch у градусах, інерція після відпускання
     float yaw, pitch = 19f, velYaw, velPitch;
     boolean dragging;
     float zoomOffset;
-    static final float autoSpin = 0.08f, dragSens = 0.25f;
+    static final float autoSpin = 0.08f;
+    /** Drag sensitivity: weaker on phones (touch deltas are big in pixels) — Чутливість перетягування: на телефоні слабша (дельти дотику великі в пікселях). */
+    static final float dragSensDesktop = 0.25f, dragSensMobile = 0.05f;
 
     // 3D cage: the same hex/pentagon grid as sectors (Goldberg polyhedron) — 3D-клітка: та сама сітка, що й сектори (Goldberg-поліедр)
     static final int cageSize = 1;          // 0 dodecahedron, 1 football (12 pent + 20 hex), 2 denser — 0 додекаедр, 1 м'яч (12 п'ятикутників + 20 шестикутників), 2 густіше
@@ -148,7 +150,7 @@ public class AuroraMenuRenderer implements PlanetRenderer.PlanetInterfaceRendere
             // Everyone's bases in the normal color (Sharded) — Бази всіх гравців звичайним кольором (Sharded)
             boolean lb = captured[sec.id], rb = mindustry.AuroraNet.remoteBase(sec);
             if(lb || rb){
-                planets.drawSelection(sec, Tmp.c1.set(Team.sharded.color).mul(0.8f).a(1f), 0.026f, -0.001f);
+                planets.drawSelection(sec, Tmp.c1.set(mindustry.AuroraNet.baseColor).mul(0.8f).a(1f), 0.026f, -0.001f);
             }
 
             // Live sectors: blue frame / blinking blue / blinking red — Живі сектори: синя рамка / блимання синім / блимання червоним
@@ -177,7 +179,7 @@ public class AuroraMenuRenderer implements PlanetRenderer.PlanetInterfaceRendere
                 info.icon != null ? Fonts.getLargeIcon(info.icon) : null;
             if(icon == null) continue;
 
-            Color color = attacked[sec.id] ? Team.sharded.color : Color.white;
+            Color color = attacked[sec.id] ? mindustry.AuroraNet.baseColor : Color.white;
             planets.drawPlane(sec, () -> {
                 Draw.color(color);
                 Draw.rect(icon, 0, 0, iw, iw * icon.height / icon.width);
@@ -369,6 +371,7 @@ public class AuroraMenuRenderer implements PlanetRenderer.PlanetInterfaceRendere
         if(!Core.input.isTouched()) dragging = false;
 
         if(dragging){
+            float dragSens = mobile ? dragSensMobile : dragSensDesktop;
             velYaw = -Core.input.deltaX() * dragSens;
             velPitch = -Core.input.deltaY() * dragSens;
             yaw += velYaw;
@@ -441,6 +444,6 @@ public class AuroraMenuRenderer implements PlanetRenderer.PlanetInterfaceRendere
             drawCage(jx + Scl.scl(4f), jy, 0.4f, Color.scarlet, t);
             drawCage(jx - Scl.scl(4f), jy, 0.4f, Color.cyan, t);
         }
-        drawCage(jx, jy, 0.65f + Mathf.absin(t, 9f, 0.3f), Pal.accent, t);
+        drawCage(jx, jy, 0.65f + Mathf.absin(t, 9f, 0.3f), mindustry.AuroraNet.cageColor, t);
     }
 }

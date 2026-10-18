@@ -246,6 +246,16 @@ public class JoinDialog extends BaseDialog{
 
             server.content.background(Tex.whitePane).setColor(Pal.gray);
             server.content.add("@host.invalid").grow().center().labelAlign(Align.center);
+
+            // AURORA: no game server, but maybe an Aurora planet (host still in the menu) — clicking joins it
+            // — Сервера гри нема, але, можливо, є планета Aurora (хост ще в меню) — клік заходить на неї
+            AuroraNet.probePlanet(server.ip, text -> {
+                if(text == null || server.lastHost != null) return;
+                server.content.clear();
+                server.content.background(Tex.whitePane).setColor(Pal.gray);
+                server.content.add(server.ip).color(Pal.accent).left().padLeft(10f).row();
+                server.content.add(text).grow().left().padLeft(10f).labelAlign(Align.left).wrap();
+            });
         });
     }
 

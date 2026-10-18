@@ -40,6 +40,8 @@ public class AuroraNet {
     public static final int PROTOCOL = 2;
 
     static long lastProtoMsg;
+    /** Don't pop up the version dialog for this thread's requests (server list probe) — Не показувати вікно версії для запитів цього потоку (перевірка списку серверів). */
+    static final ThreadLocal<Boolean> quietProto = ThreadLocal.withInitial(() -> false);
 
     /** Tell the player versions differ (at most once per 30 s) — Сказати гравцю, що версії різні (не частіше разу на 30 с). */
     static void protoMismatch(int theirs) {
@@ -247,7 +249,7 @@ public class AuroraNet {
         con.disconnect();
 
         // 426 = Authority speaks another protocol version — 426 = Authority говорить іншою версією протоколу
-        if (res.code == 426) {
+        if (res.code == 426 && !quietProto.get()) {
             int theirs = 0;
             try {
                 theirs = parse(res).getInt("proto", 0);
@@ -744,8 +746,16 @@ public class AuroraNet {
 
     // ---------- Planet map — Карта планети ----------
 
+    // ---------- Map colors, change them here only — Кольори карт, міняти лише тут ----------
+
+    /** Base frame (anyone's captured sector), menu and campaign map — Рамка бази (захоплений сектор будь-кого), меню й карта кампанії. */
+    public static final Color baseColor = new Color(Team.sharded.color);
     /** Ally color (other players' live hosts) on maps — Колір союзників (живі хости інших гравців) на картах. */
     public static final Color allyColor = Color.valueOf("5aa7ff");
+    /** Attack on an enemy base — Атака на ворожу базу. */
+    public static final Color attackColor = new Color(Team.crux.color);
+    /** Shield and cage on the menu background — Щит і клітка на фоні меню. */
+    public static final Color shieldColor = new Color(Team.sharded.color), cageColor = new Color(mindustry.graphics.Pal.accent);
 
     static volatile ObjectSet<String> remoteBases = new ObjectSet<>(), liveSectors = new ObjectSet<>();
     /** Sector state from Authority: 1 core, 2 waves, 4 attack — Стан секторів з Authority: 1 ядро, 2 хвилі, 4 атака. */
@@ -782,7 +792,7 @@ public class AuroraNet {
         float pulse = Mathf.absin(Time.time, 7f, 1f);
         Color c = Tmp.c1;
         if (attack || (!base && sec.hasEnemyBase())) {
-            Color red = Team.crux.color;
+            Color red = attackColor;
             planets.fill(sec, c.set(red).a(alpha * (0.15f + 0.35f * pulse)), -0.001f);
             planets.drawBorders(sec, red, alpha * (0.5f + 0.5f * pulse));
         } else if (!base || waves) {
@@ -1094,6 +1104,42 @@ public class AuroraNet {
     }
 
     // ---------- Join Game ----------
+
+    /**
+     * For the server list: is there an Aurora planet at this IP even though no game server answers (host still in the menu)?
+     * done gets a label text, or null if not Aurora. Runs on the main thread.
+     * — Для списку серверів: чи є за цим IP планета Aurora, хоча сервер гри не відповідає (хост ще в меню)?
+     * done отримує текст підпису, або null, якщо не Aurora. На головному потоці.
+     */
+    public static void probePlanet(String ip, Cons<String> done) {
+        String host = ip.indexOf(':') >= 0 && !ip.startsWith("[") ? "[" + ip + "]" : ip;
+        String base = "http://" + host + ":8443";
+        mainExecutor.submit(() -> {
+            String text = null;
+            quietProto.set(true);
+            try {
+                Res mode = request(base, "GET", "/mode", null, null, 2000);
+                int theirs = mode.code == 426 ? remoteProtocol(base) : PROTOCOL;
+                if (mode.code == 401) {
+                    text = "[accent]Aurora[] — [scarlet]потрібен пароль[] (налаштування Aurora)";
+                } else if (mode.code == 426) {
+                    text = "[accent]Aurora[] — [scarlet]інша версія гри (" + (theirs > 0 ? theirs : "стара") + ", у тебе " + PROTOCOL + ")";
+                } else {
+                    if (mode.code == 200 && parse(mode).getBoolean("active", false)) {
+                        int live = 0;
+                        Res s = request(base, "GET", "/sectors", null, null, 2000);
+                        if (s.code == 200) for (JsonValue c = parse(s).child; c != null; c = c.next) live++;
+                        text = "[accent]Aurora[] — планета відкрита\n[lightgray]" + (live == 0 ? "у секторах ще ніхто не грає" : "грають у секторах: " + live) + "\nнатисни, щоб зайти";
+                    }
+                }
+            } catch (Throwable ignored) {
+            } finally {
+                quietProto.set(false);
+            }
+            String result = text;
+            Core.app.post(() -> done.get(result));
+        });
+    }
 
     /**
      * Join Game: if this address (or the saved Authority) is an Aurora planet, enter Aurora as a guest.
