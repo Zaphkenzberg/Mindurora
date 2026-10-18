@@ -169,7 +169,20 @@ public class TechTree{
 
             //load up the requirements that have been finished if settings are available
             for(int i = 0; i < requirements.length; i++){
-                finishedRequirements[i] = new ItemStack(requirements[i].item, Core.settings == null ? 0 : Core.settings.getInt("req-" + content.name + "-" + requirements[i].item.name));
+                finishedRequirements[i] = new ItemStack(requirements[i].item, Core.settings == null ? 0 : Core.settings.getInt(reqKey(requirements[i].item)));
+            }
+        }
+
+        /** AURORA: прогрес дослідження окремо для кожного слоту кампанії (звичайна / своя Aurora / гість). */
+        String reqKey(Item item){
+            return mindustry.Vars.campaignPrefix() + "req-" + content.name + "-" + item.name;
+        }
+
+        /** AURORA: перечитати прогрес після перемикання слоту кампанії. */
+        public void reloadProgress(){
+            if(Core.settings == null || finishedRequirements == null) return;
+            for(ItemStack stack : finishedRequirements){
+                stack.amount = Core.settings.getInt(reqKey(stack.item));
             }
         }
 
@@ -194,7 +207,7 @@ public class TechTree{
 
             //save finished requirements by item type
             for(ItemStack stack : finishedRequirements){
-                Core.settings.put("req-" + content.name + "-" + stack.item.name, stack.amount);
+                Core.settings.put(reqKey(stack.item), stack.amount);
             }
         }
     }

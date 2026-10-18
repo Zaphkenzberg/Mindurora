@@ -236,7 +236,7 @@
             /** show with no limitations, just as a map. */
             @Override
             public Dialog show(){
-                if(net.client() && !(campaignSlot == 1 && mindustry.AuroraNet.asClient)){
+                if(net.client() && !(auroraSlot() && mindustry.AuroraNet.asClient)){
                     ui.showInfo("@map.multiplayer");
                     return this;
                 }
@@ -314,6 +314,9 @@
 
             void addTech(){
                 buttons.button("@techtree", Icon.tree, () -> ui.research.show()).size(200f, 54f).visible(() -> mode == look).pad(2).bottom();
+                //AURORA: налаштування планети - лише для хоста планети (у кого запущений свій Authority)
+                buttons.button("Aurora", Icon.planet, () -> new AuroraHostDialog().show()).size(200f, 54f)
+                    .visible(() -> mode == look && mindustry.AuroraNet.planetHost()).pad(2).bottom();
             }
 
             public void showOverview(){
@@ -421,6 +424,8 @@
                 if(sector.planet.generator == null) return false;
 
                 if(sector.hasBase() || sector.id == sector.planet.startSector) return true;
+                //AURORA: сектор, захоплений іншим гравцем, теж можна вибрати
+                if(mode == look && mindustry.AuroraNet.remoteBase(sector)) return true;
                 //preset sectors can only be selected once unlocked
                 if(sector.preset != null && sector.preset.requireUnlock){
                     TechNode node = sector.preset.techNode;
@@ -450,7 +455,8 @@
                         if(canSelect(sec) || sec.unlocked() || debugSelect){
 
                             Color color =
-                            sec.hasBase() ? Tmp.c2.set(Team.sharded.color).lerp(Team.crux.color, sec.hasEnemyBase() ? 0.5f : 0f) :
+                            //AURORA: бази всіх гравців - звичайним кольором
+                            sec.hasBase() || mindustry.AuroraNet.remoteBase(sec) ? Tmp.c2.set(Team.sharded.color).lerp(Team.crux.color, sec.hasEnemyBase() ? 0.5f : 0f) :
                             sec.preset != null && sec.preset.requireUnlock ?
                                 sec.preset.unlocked() ? Tmp.c2.set(Team.derelict.color).lerp(Color.white, Mathf.absin(Time.time, 10f, 1f)) :
                                 Color.gray :
@@ -460,6 +466,12 @@
                             if(color != null){
                                 planets.drawSelection(sec, Tmp.c1.set(color).mul(0.8f).a(state.uiAlpha), 0.026f, -0.001f);
                             }
+
+                            //AURORA: у секторі зараз хтось грає
+                            boolean lb = sec.hasBase(), rb = mindustry.AuroraNet.remoteBase(sec);
+                            mindustry.AuroraNet.drawLiveSector(planets, sec, lb || rb,
+                                lb ? sec.info.waves : mindustry.AuroraNet.remoteWaves(sec),
+                                lb ? sec.info.attack : mindustry.AuroraNet.remoteAttack(sec), state.uiAlpha);
                         }else{
                             planets.fill(sec, Tmp.c1.set(shadowColor).mul(1, 1, 1, state.uiAlpha), -0.001f);
                         }
@@ -1269,8 +1281,14 @@
                             r.row();
                         }
                     }).row();
+                }else if(mindustry.AuroraNet.remoteBase(sector) && !sector.hasBase()){
+                    stable.add("[accent]Aurora:[] захоплений іншим гравцем").row();
                 }else if(!sector.hasBase()){
                     stable.add(Core.bundle.get("sectors.threat") + " [accent]" + sector.displayThreat()).row();
+                }
+
+                if(mindustry.AuroraNet.liveSector(sector)){
+                    stable.add("[accent]Aurora:[] зараз хтось грає").row();
                 }
 
                 if(sector.isAttacked()){
@@ -1312,7 +1330,7 @@
                     stable.button(
                         mode == select ? "@sectors.select" :
                         sector.isBeingPlayed() ? "@sectors.resume" :
-                        sector.hasBase() ? "@sectors.go" :
+                        sector.hasBase() || mindustry.AuroraNet.remoteBase(sector) ? "@sectors.go" :
                         locked ? "@locked" : "@sectors.launch",
                         locked ? Icon.lock : Icon.play, this::playSelected).growX().height(54f).minWidth(170f).padTop(4).disabled(locked);
                 }
@@ -1339,7 +1357,7 @@
                 }
 
                 // AURORA: у мультикампанії вхід в сектор іде через Authority
-                if(campaignSlot == 1 && mode == Mode.look){
+                if(auroraSlot() && mode == Mode.look){
                     hide();
                     mindustry.AuroraNet.switchTo(sector);
                     return;

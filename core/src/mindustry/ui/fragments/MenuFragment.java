@@ -49,7 +49,12 @@ public class MenuFragment{
 
             parent = group;
 
-            parent.fill((x, y, w, h) -> renderer.render());
+            mindustry.graphics.AuroraMenuRenderer auroraMenu = new mindustry.graphics.AuroraMenuRenderer();
+            //AURORA: фон меню - планета зі щитом; aurora-menu=false повертає ванільний фон
+            parent.fill((x, y, w, h) -> {
+                if(Core.settings.getBool("aurora-menu", true)) auroraMenu.render();
+                else renderer.render();
+            });
 
             parent.fill(c -> {
                 c.pane(Styles.noBarPane, cont -> {
@@ -140,24 +145,16 @@ public class MenuFragment{
             container.name = "buttons";
             container.setSize(Core.graphics.getWidth(), Core.graphics.getHeight());
 
-            float size = 120f;
-            container.defaults().size(size).pad(5).padTop(4f);
+            //AURORA: кнопки рівною смугою - у горизонтальному режимі внизу, у вертикальному зліва
+            boolean land = !Core.graphics.isPortrait();
 
             MobileButton
                 play = new MobileButton(Icon.play, "@campaign", () -> {switchCampaign(0); checkPlay(ui.planet::show);}),
-                    multcamp = new MobileButton(AuroraNet.authorityOk ? Icon.planet : Icon.warning, "Aurora", () -> AuroraNet.checkAuthority(() -> {
-                        AuroraAuthority.start();
-                        if(!AuroraNet.authorityOk){
-                            new mindustry.ui.dialogs.AuroraSettingsDialog(() -> AuroraNet.checkAuthority(this::rebuildMenu)).show();
-                            return;
-                        }
-                        switchCampaign(1);
-                        checkPlay(ui.planet::show);
-                    })),
-                custom = new MobileButton(Icon.rightOpenOut, "@customgame", () -> checkPlay(ui.custom::show)),
-                maps = new MobileButton(Icon.download, "@loadgame", () -> checkPlay(ui.load::show)),
+                    multcamp = new MobileButton(AuroraNet.authorityOk ? Icon.planet : Icon.warning, "Aurora", this::openAurora),
+                custom = new MobileButton(Icon.rightOpenOut, "@customgame", normal(() -> checkPlay(ui.custom::show))),
+                maps = new MobileButton(Icon.download, "@loadgame", normal(() -> checkPlay(ui.load::show))),
                 join = new MobileButton(Icon.add, "@joingame", () -> checkPlay(ui.join::show)),
-                editor = new MobileButton(Icon.terrain, "@editor", () -> checkPlay(ui.maps::show)),
+                editor = new MobileButton(Icon.terrain, "@editor", normal(() -> checkPlay(ui.maps::show))),
                 tools = new MobileButton(Icon.settings, "@settings", ui.settings::show),
                 mods = new MobileButton(Icon.book, "@mods", ui.mods::show),
                 exit = new MobileButton(Icon.exit, "@quit", () -> Core.app.exit()),
@@ -165,45 +162,30 @@ public class MenuFragment{
 
             Seq<MobileButton> customs = customButtons.map(b -> new MobileButton(b.icon, b.text, b.runnable == null ? () -> {} : b.runnable));
 
-            if(!Core.graphics.isPortrait()){
-                container.marginTop(60f);
-                container.add(play);
-                container.add(join);
-                container.add(custom);
-                container.add(maps);
-                // add odd custom buttons
-                for(int i = 1; i < customs.size; i += 2){
-                    container.add(customs.get(i));
-                }
-                container.row();
+            Seq<MobileButton> all = Seq.with(play, multcamp, join, custom, maps, editor, tools, mods);
+            all.addAll(customs);
+            all.add((MobileButton)(ios ? about : exit));
 
-                container.add(editor);
-                container.add(tools);
-                container.add(mods);
-                // add even custom buttons (before the exit button)
-                for(int i = 0; i < customs.size; i += 2){
-                    container.add(customs.get(i));
-                }
-                container.add(ios ? about : exit);
+            //розмір кнопки під кількість кнопок і доступне місце (в одиницях UI), але не більше 88
+            float pad = 3f;
+            float avail = land
+                ? (Core.graphics.getWidth() - Core.scene.marginLeft - Core.scene.marginRight) / Scl.scl(1f) - 120f
+                : (Core.graphics.getHeight() - Core.scene.marginTop - Core.scene.marginBottom) / Scl.scl(1f) - 180f; //мінус місце під логотип
+            float size = Mathf.clamp(avail / all.size - pad * 2f, 56f, 88f);
+            container.margin(0f);
+
+            //прокрутка не потрібна (розмір кнопок підібрано під екран), а без неї таблиця займає весь екран,
+            //тож вирівнювання працює: горизонтально - смуга внизу по центру, вертикально - стовпчик зліва по центру
+            if(container.parent instanceof arc.scene.ui.ScrollPane sp) sp.setScrollingDisabled(true, true);
+
+            Table strip = new Table();
+            strip.defaults().size(size).pad(pad);
+            if(land){
+                for(var b : all) strip.add(b);
+                container.add(strip).expand().bottom().padBottom(10f);
             }else{
-                container.marginTop(0f);
-                container.add(play);
-                container.add(maps);
-                container.row();
-                container.add(custom);
-                container.add(join);
-                container.row();
-                container.add(editor);
-                container.add(tools);
-                container.row();
-                container.add(mods);
-                container.add(multcamp);
-                // add custom buttons
-                for(int i = 0; i < customs.size; i++){
-                    container.add(customs.get(i));
-                    if(i % 2 == 0) container.row();
-                }
-                container.add(ios ? about : exit);
+                for(var b : all) strip.add(b).row();
+                container.add(strip).expand().left().padLeft(6f);
             }
         }
 
@@ -224,25 +206,17 @@ public class MenuFragment{
                     desktopButtons = Seq.with(
                         new MenuButton("@play", Icon.play,
                             new MenuButton("@campaign", Icon.play, () -> {switchCampaign(0); checkPlay(ui.planet::show);}),
-                                new MenuButton("Aurora", AuroraNet.authorityOk ? Icon.planet : Icon.warning, () -> AuroraNet.checkAuthority(() -> {
-                                    AuroraAuthority.start();
-                                    if(!AuroraNet.authorityOk){
-                                        new mindustry.ui.dialogs.AuroraSettingsDialog(() -> AuroraNet.checkAuthority(this::rebuildMenu)).show();
-                                        return;
-                                    }
-                                    switchCampaign(1);
-                                    checkPlay(ui.planet::show);
-                                })),
+                                new MenuButton("Aurora", AuroraNet.authorityOk ? Icon.planet : Icon.warning, this::openAurora),
                             new MenuButton("@joingame", Icon.add, () -> checkPlay(ui.join::show)),
-                            new MenuButton("@customgame", Icon.terrain, () -> checkPlay(ui.custom::show)),
-                            new MenuButton("@loadgame", Icon.download, () -> checkPlay(ui.load::show))
+                            new MenuButton("@customgame", Icon.terrain, normal(() -> checkPlay(ui.custom::show))),
+                            new MenuButton("@loadgame", Icon.download, normal(() -> checkPlay(ui.load::show)))
                         ),
                         new MenuButton("@database.button", Icon.menu,
                             new MenuButton("@schematics", Icon.paste, ui.schematics::show),
                             new MenuButton("@database", Icon.book, ui.database::show),
                             new MenuButton("@about.button", Icon.info, ui.about::show)
                         ),
-                        new MenuButton("@editor", Icon.terrain, () -> checkPlay(ui.maps::show)), steam ? new MenuButton("@workshop", Icon.steam, platform::openWorkshop) : null,
+                        new MenuButton("@editor", Icon.terrain, normal(() -> checkPlay(ui.maps::show))), steam ? new MenuButton("@workshop", Icon.steam, platform::openWorkshop) : null,
                         new MenuButton("@mods", Icon.book, ui.mods::show),
                         new MenuButton("@settings", Icon.settings, ui.settings::show)
                     );
@@ -279,9 +253,29 @@ public class MenuFragment{
             buildDesktop();
         }
     }
+    /** AURORA: своя планета. Свій Authority стартує одразу; якщо порт зайнятий - вікно налаштувань. */
+    void openAurora(){
+        if(!AuroraAuthority.start()){
+            ui.showInfoToast("[scarlet]Aurora:[] не вдалося запустити Authority\n(порт " + Core.settings.getInt("aurora-port", 8443) + " зайнятий?)", 5f);
+            new mindustry.ui.dialogs.AuroraSettingsDialog(() -> AuroraNet.checkAuthority(this::rebuildMenu)).show();
+            return;
+        }
+        AuroraNet.authorityOk = true;
+        switchCampaign(1);
+        checkPlay(ui.planet::show);
+    }
+
+    /** AURORA: звичайні режими (своя гра, завантаження, редактор) завжди у звичайному слоті, щоб не лізти в сейви Aurora. */
+    Runnable normal(Runnable r){
+        return () -> {
+            if(campaignSlot != 0) switchCampaign(0);
+            r.run();
+        };
+    }
+
     public void switchCampaign(int slot) {
             campaignSlot = slot;
-            saveDirectory = dataDirectory.child(slot == 0 ? "saves/" : "saves2/");
+            saveDirectory = dataDirectory.child(campaignSaveDir(slot));
             universe.reloadForSlot();
 
             for (Planet p : content.planets()) {
@@ -296,7 +290,9 @@ public class MenuFragment{
                 content.each(c -> {
                     if (c instanceof UnlockableContent u) u.reloadUnlock();
                 });
-            if(slot == 1) AuroraNet.syncUnlocks();
+            if(slot != 0) AuroraNet.syncUnlocks();
+            for(var node : mindustry.content.TechTree.all) node.reloadProgress();
+            AuroraNet.onCampaignSlot(slot);
         }
         private void fadeInMenu(){
             submenu.clearActions();

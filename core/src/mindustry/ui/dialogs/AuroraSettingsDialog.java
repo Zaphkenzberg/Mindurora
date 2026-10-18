@@ -14,7 +14,7 @@ public class AuroraSettingsDialog extends BaseDialog{
             t.defaults().pad(6f).left();
 
             t.add("Authority (URL):");
-            t.field(Core.settings.getString("aurora-authority", "https://localhost:8443"), v ->
+            t.field(Core.settings.getString("aurora-authority", "http://localhost:8443"), v ->
                     Core.settings.put("aurora-authority", v.trim().replaceAll("/+$", ""))
             ).width(420f).get().setMaxLength(120);
             t.row();
@@ -25,13 +25,19 @@ public class AuroraSettingsDialog extends BaseDialog{
             ).width(420f).get().setMaxLength(80);
             t.row();
 
+            t.add("Пароль Aurora:");
+            t.field(Core.settings.getString("aurora-token", ""), v ->
+                    Core.settings.put("aurora-token", v.trim())
+            ).width(420f).get().setMaxLength(40);
+            t.row();
+
             t.add("Порт хоста:");
             t.field(String.valueOf(Core.settings.getInt("port", 6567)), v ->
                     Core.settings.put("port", Strings.parseInt(v, 6567))
             ).width(420f).get().setMaxLength(5);
             t.row();
 
-            t.add("[lightgray]Authority: адреса машини, де запущений Ktor-сервер.\n[lightgray]Моя IP: адреса, за якою друзі підключаються до тебе, коли ти хост.").colspan(2).left().padTop(10f);
+            t.add("[lightgray]Authority: адреса хоста планети (http://IP:8443).\n[lightgray]Моя IP: адреса, за якою друзі підключаються до тебе, коли ти хост сектора.\n[lightgray]Пароль: такий самий, як задав хост планети (або порожньо).").colspan(2).left().padTop(10f);
         });
     }
 }

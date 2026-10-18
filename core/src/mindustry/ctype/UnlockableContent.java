@@ -219,6 +219,11 @@ public abstract class UnlockableContent extends MappableContent{
         }
     }
 
+    /** AURORA: чи розблоковано саме локально (без урахування досліджень хоста в мультиплеєрі). */
+    public boolean unlockedLocal(){
+        return unlocked || alwaysUnlocked;
+    }
+
     /** Unlocks this content, but does not fire any events. */
     public void quietUnlock(){
         if(!unlocked()){
@@ -257,7 +262,7 @@ public abstract class UnlockableContent extends MappableContent{
         }
     }
     protected String unlockKey(){
-        return (campaignSlot == 0 ? "" : "c2-") + name + "-unlocked";
+        return campaignPrefix() + name + "-unlocked";
     }
 
     public void reloadUnlock(){

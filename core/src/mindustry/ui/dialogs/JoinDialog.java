@@ -601,6 +601,8 @@ public class JoinDialog extends BaseDialog{
                 hide();
                 add.hide();
             }else{
+                //звичайна гра (не Aurora): клієнт теж має бути у звичайному слоті кампанії
+                if(campaignSlot != 0) ui.menufrag.switchCampaign(0);
                 connectRaw(ip, port);
             }
         });

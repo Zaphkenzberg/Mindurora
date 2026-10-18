@@ -343,8 +343,17 @@ public class NetClient implements ApplicationListener{
 
     @Remote(variants = Variant.one, priority = PacketPriority.high)
     public static void kick(KickReason reason){
+        //AURORA: хост сектора вийшов - без вікна "Сервер зачинено", просто назад на карту планети
+        boolean auroraClosed = reason == KickReason.serverClose && mindustry.AuroraNet.auroraClient();
+
         netClient.disconnectQuietly();
         logic.reset();
+
+        if(auroraClosed){
+            ui.loadfrag.hide();
+            mindustry.AuroraNet.hostLeft();
+            return;
+        }
 
         if(reason == KickReason.serverRestarting){
             ui.join.reconnect();

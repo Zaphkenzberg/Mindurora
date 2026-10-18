@@ -348,7 +348,7 @@ public class Universe{
         load();
     }
     private String key(String base){
-        return campaignSlot == 0 ? base : "c2-" + base;
+        return campaignPrefix() + base;
     }
 
 }

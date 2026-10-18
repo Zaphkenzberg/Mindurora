@@ -247,7 +247,24 @@ public class Vars implements Loadable{
     /** path to the java executable */
     public static String javaPath;
     /** Multiplayer Campaigh **/
+    /** 0 = звичайна кампанія, 1 = своя планета Aurora, 2 = гість на чужій планеті Aurora (тимчасово, стирається при кожному вході). */
     public static int campaignSlot = 0;
+    public static final int slotNormal = 0, slotAurora = 1, slotGuest = 2;
+
+    /** Будь-який режим Aurora: своя планета або гість. */
+    public static boolean auroraSlot(){
+        return campaignSlot != slotNormal;
+    }
+
+    /** Префікс ключів налаштувань для поточного слоту. */
+    public static String campaignPrefix(){
+        return campaignSlot == slotNormal ? "" : campaignSlot == slotGuest ? "cg-" : "c2-";
+    }
+
+    /** Папка сейвів для слоту. */
+    public static String campaignSaveDir(int slot){
+        return slot == slotNormal ? "saves/" : slot == slotGuest ? "saves-guest/" : "saves2/";
+    }
 
     /** list of all locales that can be switched to */
     public static Locale[] locales;
@@ -462,6 +479,11 @@ public class Vars implements Loadable{
         loadedFileLogger = true;
     }
 
+    /** AURORA: масштаб інтерфейсу за замовчуванням - 75% на телефоні, 100% на ПК. */
+    public static int defaultUiScale(){
+        return Core.app != null && Core.app.isMobile() ? 75 : 100;
+    }
+
     public static void loadSettings(){
         settings.setJson(JsonIO.json);
         settings.setAppName(appName);
@@ -485,10 +507,10 @@ public class Vars implements Loadable{
 
         //https://github.com/Anuken/Mindustry/issues/8483
         if(settings.getInt("uiscale") == 5){
-            settings.put("uiscale", 100);
+            settings.put("uiscale", defaultUiScale());
         }
 
-        Scl.setProduct(Math.max(settings.getInt("uiscale", 100), 25) / 100f);
+        Scl.setProduct(Math.max(settings.getInt("uiscale", defaultUiScale()), 25) / 100f);
 
         if(!loadLocales) return;
 

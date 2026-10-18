@@ -109,7 +109,7 @@ public class ResearchDialog extends BaseDialog{
 
         margin(0f).marginBottom(8);
         cont.stack(titleTable, view = new View(), itemDisplay = new ItemsDisplay()).grow();
-        itemDisplay.visible(() -> !net.client());
+        itemDisplay.visible(() -> !viewOnly());
 
         titleTable.toFront();
 
@@ -209,7 +209,17 @@ public class ResearchDialog extends BaseDialog{
         itemDisplay.layout();
     }
 
+    /**
+     * Лише перегляд дерева (ванільний клієнт у мультиплеєрі). AURORA: у спільній кампанії клієнт сектора
+     * теж досліджує - платить спільний склад через Authority, тож для нього дерево повністю робоче.
+     */
+    static boolean viewOnly(){
+        return net.client() && !mindustry.AuroraNet.itemsActive();
+    }
+
     public void rebuildItems(){
+        boolean aurora = mindustry.AuroraNet.itemsActive();
+
         items = new ItemSeq(){
             //store sector item amounts for modifications
             ObjectMap<Sector, ItemSeq> cache = new ObjectMap<>();
@@ -228,16 +238,24 @@ public class ResearchDialog extends BaseDialog{
                     rootPlanets.add(Planets.serpulo);
                 }
 
-                //add global counts of each sector
-                for(Planet planet : rootPlanets){
-                    for(Sector sector : planet.sectors){
-                        if(sector.hasBase()){
-                            ItemSeq cached = sector.items();
-                            cache.put(sector, cached);
-                            cached.each((item, amount) -> {
-                                values[item.id] += Math.max(amount, 0);
-                                total += Math.max(amount, 0);
-                            });
+                if(aurora){
+                    //AURORA: спільний склад з Authority замість суми секторів
+                    mindustry.AuroraNet.globalItems().each((item, amount) -> {
+                        values[item.id] += Math.max(amount, 0);
+                        total += Math.max(amount, 0);
+                    });
+                }else{
+                    //add global counts of each sector
+                    for(Planet planet : rootPlanets){
+                        for(Sector sector : planet.sectors){
+                            if(sector.hasBase()){
+                                ItemSeq cached = sector.items();
+                                cache.put(sector, cached);
+                                cached.each((item, amount) -> {
+                                    values[item.id] += Math.max(amount, 0);
+                                    total += Math.max(amount, 0);
+                                });
+                            }
                         }
                     }
                 }
@@ -247,7 +265,9 @@ public class ResearchDialog extends BaseDialog{
             @Override
             public void add(Item item, int amount){
                 //only have custom removal logic for when the sequence gets items taken out of it (e.g. research)
-                if(amount < 0){
+                if(amount < 0 && aurora){
+                    //AURORA: списання вже підтвердив Authority (див. auroraSpend), тут лише оновлюємо показ
+                }else if(amount < 0){
                     //remove items from each sector's storage, one by one
 
                     //negate amount since it's being *removed* - this makes it positive
@@ -441,7 +461,7 @@ public class ResearchDialog extends BaseDialog{
                 button.resizeImage(32f);
                 button.getImage().setScaling(Scaling.fit);
                 button.visible(() -> node.visible);
-                if(!net.client()){
+                if(!viewOnly()){
                     button.clicked(() -> {
                         if(moved) return;
 
@@ -485,10 +505,10 @@ public class ResearchDialog extends BaseDialog{
                 button.userObject = node.node;
                 button.setSize(nodeSize);
                 button.update(() -> {
-                    button.setDisabled(net.client() && !mobile);
+                    button.setDisabled(viewOnly() && !mobile);
                     float offset = (Core.graphics.getHeight() % 2) / 2f;
                     button.setPosition(node.x + panX + width / 2f, node.y + panY + height / 2f + offset, Align.center);
-                    button.getStyle().up = !locked(node.node) ? Tex.buttonOver : !selectable(node.node) || (!canSpend(node.node) && !net.client()) ? Tex.buttonRed : Tex.button;
+                    button.getStyle().up = !locked(node.node) ? Tex.buttonOver : !selectable(node.node) || (!canSpend(node.node) && !viewOnly()) ? Tex.buttonRed : Tex.button;
 
                     ((TextureRegionDrawable)button.getStyle().imageUp).setRegion(node.selectable ? node.node.content.uiIcon : Icon.lock.getRegion());
                     button.getImage().setColor(!locked(node.node) ? Color.white : node.selectable ? Color.gray : Pal.gray);
@@ -531,7 +551,7 @@ public class ResearchDialog extends BaseDialog{
         }
 
         boolean canSpend(TechNode node){
-            if(!selectable(node) || net.client()) return false;
+            if(!selectable(node) || viewOnly()) return false;
 
             if(node.requirements.length == 0) return true;
 
@@ -546,7 +566,15 @@ public class ResearchDialog extends BaseDialog{
             return node.content.locked();
         }
 
+        /** AURORA: дослідження чекає підтвердження від Authority (хоста планети). */
+        boolean auroraWaiting;
+
         void spend(TechNode node){
+            //AURORA: у спільній кампанії досліджувати може і клієнт сектора - платить спільний склад через Authority
+            if(mindustry.AuroraNet.itemsActive()){
+                auroraSpend(node);
+                return;
+            }
             if(net.client()) return;
 
             boolean complete = true;
@@ -585,6 +613,62 @@ public class ResearchDialog extends BaseDialog{
             rebuild(shine);
             itemDisplay.rebuild(items, usedShine);
             checkMargin();
+        }
+
+        /**
+         * AURORA: все або нічого. Спершу Authority (хост планети) перевіряє спільний склад і ставить списання
+         * в черги секторів; лише після його "так" дослідження відкривається. Якщо відповіді нема або ресурсів
+         * не вистачає - нічого не відкривається і нічого не списується.
+         */
+        void auroraSpend(TechNode node){
+            if(auroraWaiting) return;
+
+            ObjectIntMap<Item> need = new ObjectIntMap<>();
+            for(int i = 0; i < node.requirements.length; i++){
+                ItemStack req = node.requirements[i];
+                int left = req.amount - node.finishedRequirements[i].amount;
+                if(left > 0) need.increment(req.item, left);
+            }
+
+            //частковий прогрес у спільній кампанії не ведемо: або вистачає всього, або нічого
+            for(var e : need){
+                if(items.get(e.key) < e.value){
+                    ui.showInfoToast("[scarlet]Aurora:[] не вистачає " + e.key.emoji() + " " + e.key.localizedName, 3f);
+                    return;
+                }
+            }
+
+            auroraWaiting = true;
+            mindustry.AuroraNet.spendConfirmed(need, ok -> {
+                auroraWaiting = false;
+                if(!ok){
+                    ui.showInfoToast("[scarlet]Aurora:[] хост планети не підтвердив витрату\n(не вистачає ресурсів у секторах або нема зв'язку)", 4f);
+                    mindustry.AuroraNet.refreshItems();
+                    return;
+                }
+
+                boolean[] shine = new boolean[node.requirements.length];
+                boolean[] usedShine = new boolean[content.items().size];
+                for(int i = 0; i < node.requirements.length; i++){
+                    ItemStack req = node.requirements[i];
+                    int left = req.amount - node.finishedRequirements[i].amount;
+                    if(left > 0){
+                        items.remove(req.item, left); //лише показ, на склад уже списано
+                        shine[i] = true;
+                        usedShine[req.item.id] = true;
+                    }
+                    node.finishedRequirements[i].amount = req.amount;
+                }
+
+                unlock(node);
+                node.save();
+                mindustry.AuroraNet.refreshItems();
+
+                Core.scene.act();
+                rebuild(shine);
+                itemDisplay.rebuild(items, usedShine);
+                checkMargin();
+            });
         }
 
         void unlock(TechNode node){
@@ -653,9 +737,9 @@ public class ResearchDialog extends BaseDialog{
                     desc.left().defaults().left();
                     desc.add(selectable ? node.content.localizedName : "[accent]???");
                     desc.row();
-                    if(locked(node) || (debugShowRequirements && !net.client())){
+                    if(locked(node) || (debugShowRequirements && !viewOnly())){
 
-                        if(net.client()){
+                        if(viewOnly()){
                             desc.add("@locked").color(Pal.remove);
                         }else{
                             desc.table(t -> {
@@ -736,7 +820,7 @@ public class ResearchDialog extends BaseDialog{
                     }
                 }).pad(9);
 
-                if(mobile && locked(node) && !net.client()){
+                if(mobile && locked(node) && !viewOnly()){
                     b.row();
                     b.button("@research", Icon.ok, new TextButtonStyle(){{
                         disabled = Tex.button;

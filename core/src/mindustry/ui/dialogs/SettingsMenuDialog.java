@@ -373,9 +373,9 @@ public class SettingsMenuDialog extends BaseDialog{
             game.checkPref("console", false);
         }
 
-        int[] lastUiScale = {settings.getInt("uiscale", 100)};
+        int[] lastUiScale = {settings.getInt("uiscale", defaultUiScale())};
 
-        graphics.sliderPref("uiscale", 100, 25, 300, 5, s -> {
+        graphics.sliderPref("uiscale", defaultUiScale(), 25, 300, 5, s -> {
             //if the user changed their UI scale, but then put it back, don't consider it 'changed'
             Core.settings.put("uiscalechanged", s != lastUiScale[0]);
             return s + "%";

@@ -107,7 +107,7 @@ public class Sector{
         return (preset != null && preset.overrideLaunchDefaults) ? preset.allowLaunchLoadout : planet.allowLaunchLoadout;
     }
     private String infoKey(){
-        return (campaignSlot == 0 ? "" : "c2-") + planet.name + "-s-" + id + "-info";
+        return campaignPrefix() + planet.name + "-s-" + id + "-info";
     }
 
     public void saveInfo(){
