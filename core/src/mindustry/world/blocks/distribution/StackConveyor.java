@@ -53,6 +53,7 @@ public class StackConveyor extends Block implements Autotiler{
         conveyorPlacement = true;
         underBullets = true;
         priority = TargetPriority.transport;
+        // AURORA: ulocate filter "transfer" — фільтр ulocate "передача"
         flags = arc.struct.EnumSet.of(BlockFlag.transfer);
 
         ambientSound = Sounds.conveyor;

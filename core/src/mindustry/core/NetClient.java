@@ -130,6 +130,7 @@ public class NetClient implements ApplicationListener{
             Time.runTask(3f, ui.loadfrag::hide);
 
             if(packet.reason != null){
+                // AURORA: a closed sector is handled by AuroraNet — Закритий сектор обробляє AuroraNet
                 if("closed".equals(packet.reason) && mindustry.AuroraNet.auroraClient()) return;
                 ui.showSmall(switch(packet.reason){
                     case "closed" -> "@disconnect.closed";
@@ -343,7 +344,8 @@ public class NetClient implements ApplicationListener{
 
     @Remote(variants = Variant.one, priority = PacketPriority.high)
     public static void kick(KickReason reason){
-        //AURORA: хост сектора вийшов - без вікна "Сервер зачинено", просто назад на карту планети
+        // AURORA: the sector host left — no "Server closed" dialog, just back to the planet map
+        // — Хост сектора вийшов: без вікна "Сервер зачинено", просто назад на карту планети
         boolean auroraClosed = reason == KickReason.serverClose && mindustry.AuroraNet.auroraClient();
 
         netClient.disconnectQuietly();

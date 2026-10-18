@@ -41,6 +41,7 @@ public class OverdriveProjector extends Block{
         emitLight = true;
         lightRadius = 50f;
         envEnabled |= Env.space;
+        // AURORA: ulocate filter "overdrive" — фільтр ulocate "прискорювач"
         flags = arc.struct.EnumSet.of(BlockFlag.overdrive);
     }
 

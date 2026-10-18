@@ -19,6 +19,7 @@ public class MemoryBlock extends Block{
         drawDisabled = false;
         envEnabled = Env.any;
         canOverdrive = false;
+        // AURORA: ulocate filter "logic" — фільтр ulocate "логіка"
         flags = arc.struct.EnumSet.of(BlockFlag.logic);
     }
 

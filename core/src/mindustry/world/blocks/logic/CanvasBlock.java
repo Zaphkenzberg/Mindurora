@@ -48,6 +48,7 @@ public class CanvasBlock extends Block{
         destructible = true;
         canOverdrive = false;
         solid = true;
+        // AURORA: ulocate filter "logic" — фільтр ulocate "логіка"
         flags = arc.struct.EnumSet.of(BlockFlag.logic);
 
         config(byte[].class, (CanvasBuild build, byte[] bytes) -> {

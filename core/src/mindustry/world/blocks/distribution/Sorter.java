@@ -31,6 +31,7 @@ public class Sorter extends Block{
         unloadable = false;
         saveConfig = true;
         clearOnDoubleTap = true;
+        // AURORA: ulocate filter "transfer" — фільтр ulocate "передача"
         flags = arc.struct.EnumSet.of(BlockFlag.transfer);
 
         config(Item.class, (SorterBuild tile, Item item) -> tile.sortItem = item);

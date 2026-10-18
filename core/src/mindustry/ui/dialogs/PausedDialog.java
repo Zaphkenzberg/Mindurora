@@ -128,7 +128,8 @@ public class PausedDialog extends BaseDialog{
         Runnable quit = () -> {
             if(AuroraNet.hosting){
                 hide();
-                AuroraNet.leave();   // зберегти -> залити -> звільнити -> закрити сервер -> список секторів
+                // AURORA host: save -> upload -> release -> close server -> planet map — Хост AURORA: зберегти -> залити -> звільнити -> закрити сервер -> карта
+                AuroraNet.leave();
                 return;
             }
             runExitSave();

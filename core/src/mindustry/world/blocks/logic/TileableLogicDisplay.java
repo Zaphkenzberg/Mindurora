@@ -33,6 +33,7 @@ public class TileableLogicDisplay extends LogicDisplay{
         super(name);
 
         displaySize = 32;
+        // AURORA: ulocate filter "logic" — фільтр ulocate "логіка"
         flags = arc.struct.EnumSet.of(BlockFlag.logic);
     }
 

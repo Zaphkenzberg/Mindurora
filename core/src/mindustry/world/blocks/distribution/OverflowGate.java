@@ -23,6 +23,7 @@ public class OverflowGate extends Block{
         unloadable = false;
         canOverdrive = false;
         itemCapacity = 0;
+        // AURORA: ulocate filter "transfer" — фільтр ulocate "передача"
         flags = arc.struct.EnumSet.of(BlockFlag.transfer);
     }
 

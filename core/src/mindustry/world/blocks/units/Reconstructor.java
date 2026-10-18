@@ -41,6 +41,7 @@ public class Reconstructor extends UnitBlock{
         commandable = true;
         ambientSound = Sounds.respawning;
         configurable = true;
+        // AURORA: ulocate filter "ufactory" — фільтр ulocate "завод юнітів"
         flags = arc.struct.EnumSet.of(BlockFlag.ufactory);
         config(UnitCommand.class, (ReconstructorBuild build, UnitCommand command) -> build.command = command);
         configClear((ReconstructorBuild build) -> build.command = null);

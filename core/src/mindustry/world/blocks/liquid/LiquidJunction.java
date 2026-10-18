@@ -11,6 +11,7 @@ public class LiquidJunction extends LiquidBlock{
     public LiquidJunction(String name){
         super(name);
         floating = true;
+        // AURORA: ulocate filter "transfer" — фільтр ulocate "передача"
         flags = arc.struct.EnumSet.of(BlockFlag.transfer);
     }
 

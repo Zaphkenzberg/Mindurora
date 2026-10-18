@@ -54,6 +54,7 @@ public class Conduit extends LiquidBlock implements Autotiler{
         noUpdateDisabled = true;
         canOverdrive = false;
         priority = TargetPriority.transport;
+        // AURORA: ulocate filter "transfer" — фільтр ulocate "передача"
         flags = arc.struct.EnumSet.of(BlockFlag.transfer);
     }
 

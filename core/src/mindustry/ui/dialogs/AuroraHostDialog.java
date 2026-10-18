@@ -2,13 +2,16 @@ package mindustry.ui.dialogs;
 
 import arc.*;
 import arc.scene.ui.*;
-import arc.util.*;
-import mindustry.*;
 import arc.graphics.*;
+import arc.scene.ui.layout.*;
+import mindustry.*;
 import mindustry.gen.*;
 import mindustry.ui.*;
 
-/** AURORA: налаштування планети для хоста - відкрити/закрити для друзів, адреса, пароль, хто зараз грає. */
+/**
+ * Planet settings for the planet host: who may join, address for friends, password, who is playing now.
+ * — Налаштування планети для хоста планети: хто може зайти, адреса для друзів, пароль, хто зараз грає.
+ */
 public class AuroraHostDialog extends BaseDialog{
 
     public AuroraHostDialog(){
@@ -17,18 +20,23 @@ public class AuroraHostDialog extends BaseDialog{
         shown(this::rebuild);
     }
 
+    static void separator(Table t){
+        t.image().color(Color.gray).height(2f).growX().colspan(2).pad(6f, 0f, 6f, 0f).row();
+    }
+
     void rebuild(){
         cont.clear();
         cont.table(Styles.grayPanel, t -> {
             t.margin(12f).defaults().pad(5f).left();
 
-            //стан
+            // Status — Стан
             t.add("Authority:");
             t.label(() -> !AuroraAuthority.running() ? "[scarlet]не запущений" :
                 AuroraAuthority.scope() == AuroraAuthority.SCOPE_LOCAL ? "[accent]лише цей ПК" :
                 AuroraAuthority.scope() == AuroraAuthority.SCOPE_TAILSCALE ? "[green]відкритий для Tailscale" :
                 "[green]відкритий для LAN і Tailscale").row();
 
+            // Access scope — Хто може зайти
             t.add("Хто може зайти:");
             t.table(r -> {
                 String[] names = {"Лише я", "LAN + Tailscale", "Лише Tailscale"};
@@ -43,32 +51,32 @@ public class AuroraHostDialog extends BaseDialog{
             }).row();
             t.add("[lightgray]З інтернету (публічні IP) Authority не пускає ніколи,\n[lightgray]навіть якщо порт 8443 відкритий на роутері.").colspan(2).row();
 
-            t.image().color(Color.gray).height(2f).growX().colspan(2).pad(6f, 0f, 6f, 0f).row();
+            separator(t);
 
-            //адреса
+            // Address for friends — Адреса для друзів
             String addr = AuroraNet.myIp() + ":" + AuroraNet.myPort();
             t.add("Адреса для друзів:");
             t.table(r -> {
                 r.add("[accent]" + addr).padRight(8f);
                 r.button(Icon.copySmall, Styles.clearNonei, () -> {
                     Core.app.setClipboardText(addr);
-                    ui().showInfoFade("@copied");
+                    Vars.ui.showInfoFade("@copied");
                 }).size(40f);
             }).row();
             t.add("[lightgray]Друзі: Грати > Приєднатись > ця адреса.").colspan(2).row();
             t.add("Порт Authority:");
             t.label(() -> AuroraAuthority.port() > 0 ? String.valueOf(AuroraAuthority.port()) : "-").row();
 
-            //пароль
+            // Password (X-Aurora-Token) — Пароль (X-Aurora-Token)
             t.add("Пароль (необов'язково):");
             TextField f = t.field(Core.settings.getString("aurora-token", ""), v -> Core.settings.put("aurora-token", v.trim())).width(260f).get();
             f.setMaxLength(40);
             t.row();
             t.add("[lightgray]Якщо задано, друзі мають ввести той самий пароль\n[lightgray]у своїх налаштуваннях Aurora.").colspan(2).row();
 
-            t.image().color(Color.gray).height(2f).growX().colspan(2).pad(6f, 0f, 6f, 0f).row();
+            separator(t);
 
-            //статистика
+            // Live stats — Жива статистика
             t.add("Зараз грають у секторах:");
             t.label(() -> String.valueOf(AuroraAuthority.liveCount())).row();
             t.label(() -> {
@@ -79,11 +87,6 @@ public class AuroraHostDialog extends BaseDialog{
             t.label(() -> String.valueOf(AuroraAuthority.savedCount())).row();
             t.add("Спільних досліджень:");
             t.label(() -> String.valueOf(AuroraAuthority.unlockCount())).row();
-        }).width(Math.min(Core.graphics.getWidth() / arc.scene.ui.layout.Scl.scl(1f) - 40f, 560f));
+        }).width(Math.min(Core.graphics.getWidth() / Scl.scl(1f) - 40f, 560f));
     }
-
-    static mindustry.core.UI ui(){
-        return Vars.ui;
-    }
-
 }

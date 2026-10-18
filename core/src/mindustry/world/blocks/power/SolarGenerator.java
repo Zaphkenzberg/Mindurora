@@ -10,9 +10,11 @@ public class SolarGenerator extends PowerGenerator{
 
     public SolarGenerator(String name){
         super(name);
-        //remove the BlockFlag.generator flag to make this a lower priority target than other generators.
-        flags = EnumSet.of();
+        //vanilla removed BlockFlag.generator so enemies target solar panels last.
+        //AURORA: the flag is back for ulocate, so enemy AI now treats solar like any generator
+        // — ваніла прибирала generator, щоб вороги били сонячні панелі останніми; AURORA повертає його для ulocate, тож ШІ ворогів тепер б'є їх як звичайні генератори
         envEnabled = Env.any;
+        // AURORA: ulocate filter "generator" — фільтр ulocate "генератор"
         flags = arc.struct.EnumSet.of(BlockFlag.generator);
     }
 

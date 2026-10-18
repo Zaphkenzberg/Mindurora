@@ -603,7 +603,7 @@ public class Control implements ApplicationListener, Loadable{
 
                 float[] countdown = {60 * 11};
                 Runnable exit = () -> {
-                    Core.settings.put("uiscale", defaultUiScale());
+                    Core.settings.put("uiscale", defaultUiScale()); // AURORA: 75% on phones — 75% на телефоні
                     Core.settings.put("uiscalechanged", false);
                     dialog.hide();
                     Core.app.exit();

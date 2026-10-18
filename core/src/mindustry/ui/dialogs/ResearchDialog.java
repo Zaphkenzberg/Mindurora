@@ -210,14 +210,17 @@ public class ResearchDialog extends BaseDialog{
     }
 
     /**
-     * Лише перегляд дерева (ванільний клієнт у мультиплеєрі). AURORA: у спільній кампанії клієнт сектора
-     * теж досліджує - платить спільний склад через Authority, тож для нього дерево повністю робоче.
+     * View-only tree (vanilla multiplayer client). AURORA: in the shared campaign a sector client researches too,
+     * paying from the shared stock via Authority, so the tree is fully usable.
+     * — Лише перегляд дерева (ванільний клієнт у мультиплеєрі). AURORA: у спільній кампанії клієнт сектора теж досліджує,
+     * платить спільний склад через Authority, тож дерево повністю робоче.
      */
     static boolean viewOnly(){
         return net.client() && !mindustry.AuroraNet.itemsActive();
     }
 
     public void rebuildItems(){
+        // AURORA: shared items via Authority — Спільні ресурси через Authority
         boolean aurora = mindustry.AuroraNet.itemsActive();
 
         items = new ItemSeq(){
@@ -239,7 +242,7 @@ public class ResearchDialog extends BaseDialog{
                 }
 
                 if(aurora){
-                    //AURORA: спільний склад з Authority замість суми секторів
+                    // AURORA: shared stock from Authority instead of the sum of sectors — Спільний склад з Authority замість суми секторів
                     mindustry.AuroraNet.globalItems().each((item, amount) -> {
                         values[item.id] += Math.max(amount, 0);
                         total += Math.max(amount, 0);
@@ -266,7 +269,7 @@ public class ResearchDialog extends BaseDialog{
             public void add(Item item, int amount){
                 //only have custom removal logic for when the sequence gets items taken out of it (e.g. research)
                 if(amount < 0 && aurora){
-                    //AURORA: списання вже підтвердив Authority (див. auroraSpend), тут лише оновлюємо показ
+                    // AURORA: Authority already confirmed the spend (see auroraSpend), only the display changes — Authority уже підтвердив витрату (див. auroraSpend), тут лише показ
                 }else if(amount < 0){
                     //remove items from each sector's storage, one by one
 
@@ -566,11 +569,11 @@ public class ResearchDialog extends BaseDialog{
             return node.content.locked();
         }
 
-        /** AURORA: дослідження чекає підтвердження від Authority (хоста планети). */
+        /** AURORA: research waits for Authority's (planet host's) confirmation — Дослідження чекає підтвердження Authority (хоста планети). */
         boolean auroraWaiting;
 
         void spend(TechNode node){
-            //AURORA: у спільній кампанії досліджувати може і клієнт сектора - платить спільний склад через Authority
+            // AURORA: in the shared campaign a sector client may research too — У спільній кампанії досліджувати може і клієнт сектора
             if(mindustry.AuroraNet.itemsActive()){
                 auroraSpend(node);
                 return;
@@ -616,9 +619,10 @@ public class ResearchDialog extends BaseDialog{
         }
 
         /**
-         * AURORA: все або нічого. Спершу Authority (хост планети) перевіряє спільний склад і ставить списання
-         * в черги секторів; лише після його "так" дослідження відкривається. Якщо відповіді нема або ресурсів
-         * не вистачає - нічого не відкривається і нічого не списується.
+         * AURORA: all or nothing. Authority (planet host) checks the shared stock and queues spends to sectors;
+         * the research opens only after its "yes". No answer or not enough items: nothing opens, nothing is spent.
+         * — Все або нічого. Authority (хост планети) перевіряє спільний склад і ставить списання в черги секторів;
+         * дослідження відкривається лише після його "так". Нема відповіді чи ресурсів: нічого не відкривається й не списується.
          */
         void auroraSpend(TechNode node){
             if(auroraWaiting) return;
@@ -630,7 +634,7 @@ public class ResearchDialog extends BaseDialog{
                 if(left > 0) need.increment(req.item, left);
             }
 
-            //частковий прогрес у спільній кампанії не ведемо: або вистачає всього, або нічого
+            // No partial progress in the shared campaign: everything or nothing — Часткового прогресу в спільній кампанії нема: все або нічого
             for(var e : need){
                 if(items.get(e.key) < e.value){
                     ui.showInfoToast("[scarlet]Aurora:[] не вистачає " + e.key.emoji() + " " + e.key.localizedName, 3f);
@@ -653,7 +657,7 @@ public class ResearchDialog extends BaseDialog{
                     ItemStack req = node.requirements[i];
                     int left = req.amount - node.finishedRequirements[i].amount;
                     if(left > 0){
-                        items.remove(req.item, left); //лише показ, на склад уже списано
+                        items.remove(req.item, left); // display only, the stock is already charged — лише показ, зі складу вже списано
                         shine[i] = true;
                         usedShine[req.item.id] = true;
                     }

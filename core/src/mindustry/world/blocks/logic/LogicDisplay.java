@@ -56,6 +56,7 @@ public class LogicDisplay extends Block{
         group = BlockGroup.logic;
         drawDisabled = false;
         envEnabled = Env.any;
+        // AURORA: ulocate filter "logic" — фільтр ulocate "логіка"
         flags = arc.struct.EnumSet.of(BlockFlag.logic);
     }
 

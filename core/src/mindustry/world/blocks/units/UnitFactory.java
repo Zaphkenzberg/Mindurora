@@ -48,6 +48,7 @@ public class UnitFactory extends UnitBlock{
         regionRotated1 = 1;
         commandable = true;
         ambientSound = Sounds.respawning;
+        // AURORA: ulocate filter "ufactory" — фільтр ulocate "завод юнітів"
         flags = arc.struct.EnumSet.of(BlockFlag.ufactory);
 
         config(Integer.class, (UnitFactoryBuild build, Integer i) -> {

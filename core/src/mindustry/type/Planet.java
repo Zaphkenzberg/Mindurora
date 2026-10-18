@@ -572,6 +572,7 @@ public class Planet extends UnlockableContent{
         float scaledOutlineRad = outlineRad * radius;
         Mesh mesh = gridMesh;
         Shader shader = Shaders.planetGrid;
+        // AURORA: no mouse highlight on the menu background — Без підсвітки під мишкою на фоні меню
         Vec3 tile = params.mouseGrid ? intersect(cam.getMouseRay(), scaledOutlineRad) : null;
         Shaders.planetGrid.mouse.lerp(tile == null ? Vec3.Zero : tile.sub(position).rotate(Vec3.Y, getRotation()), 0.2f);
 

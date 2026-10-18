@@ -209,6 +209,7 @@ public abstract class UnlockableContent extends MappableContent{
         return !isHidden();
     }
 
+    /** Makes this piece of content unlocked; if it already unlocked, nothing happens. */
     public void unlock(){
         if(!unlocked && !alwaysUnlocked){
             unlocked = true;
@@ -219,7 +220,7 @@ public abstract class UnlockableContent extends MappableContent{
         }
     }
 
-    /** AURORA: чи розблоковано саме локально (без урахування досліджень хоста в мультиплеєрі). */
+    /** AURORA: unlocked locally (ignoring the multiplayer host's research) — Розблоковано саме локально (без досліджень хоста в мультиплеєрі). */
     public boolean unlockedLocal(){
         return unlocked || alwaysUnlocked;
     }
@@ -261,10 +262,13 @@ public abstract class UnlockableContent extends MappableContent{
             Core.settings.put(unlockKey(), false);
         }
     }
+
+    /** AURORA: settings key, prefixed per campaign slot — Ключ налаштувань з префіксом слоту кампанії. */
     protected String unlockKey(){
         return campaignPrefix() + name + "-unlocked";
     }
 
+    /** AURORA: re-read after switching the slot — Перечитати після перемикання слоту. */
     public void reloadUnlock(){
         unlocked = Core.settings.getBool(unlockKey(), false);
     }

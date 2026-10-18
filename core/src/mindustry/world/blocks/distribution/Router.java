@@ -22,6 +22,7 @@ public class Router extends Block{
         group = BlockGroup.transportation;
         unloadable = false;
         noUpdateDisabled = true;
+        // AURORA: ulocate filter "transfer" — фільтр ulocate "передача"
         flags = arc.struct.EnumSet.of(BlockFlag.transfer);
     }
 

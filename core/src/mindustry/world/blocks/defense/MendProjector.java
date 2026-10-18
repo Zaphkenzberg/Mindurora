@@ -40,6 +40,7 @@ public class MendProjector extends Block{
         lightRadius = 50f;
         suppressable = true;
         envEnabled |= Env.space;
+        // AURORA: ulocate filter "brepair" — фільтр ulocate "ремонт блоків"
         flags = arc.struct.EnumSet.of(BlockFlag.brepair);
     }
 

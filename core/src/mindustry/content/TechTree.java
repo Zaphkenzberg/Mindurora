@@ -173,12 +173,12 @@ public class TechTree{
             }
         }
 
-        /** AURORA: прогрес дослідження окремо для кожного слоту кампанії (звичайна / своя Aurora / гість). */
+        /** AURORA: research progress per campaign slot (normal / own Aurora / guest) — Прогрес дослідження окремо для кожного слоту (звичайна / своя Aurora / гість). */
         String reqKey(Item item){
             return mindustry.Vars.campaignPrefix() + "req-" + content.name + "-" + item.name;
         }
 
-        /** AURORA: перечитати прогрес після перемикання слоту кампанії. */
+        /** AURORA: re-read progress after switching the slot — Перечитати прогрес після перемикання слоту. */
         public void reloadProgress(){
             if(Core.settings == null || finishedRequirements == null) return;
             for(ItemStack stack : finishedRequirements){

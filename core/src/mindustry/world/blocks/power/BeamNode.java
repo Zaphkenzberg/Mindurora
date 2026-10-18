@@ -16,7 +16,6 @@ import mindustry.gen.*;
 import mindustry.graphics.*;
 import mindustry.input.*;
 import mindustry.world.*;
-import mindustry.world.blocks.power.BeamNode.BeamNodeBuild;
 import mindustry.world.meta.*;
 
 import java.util.*;
@@ -45,6 +44,7 @@ public class BeamNode extends PowerBlock{
         allowDiagonal = false;
         underBullets = true;
         priority = TargetPriority.transport;
+        // AURORA: ulocate filter "powernode" — фільтр ulocate "вузол енергії"
         flags = arc.struct.EnumSet.of(BlockFlag.powernode);
     }
 

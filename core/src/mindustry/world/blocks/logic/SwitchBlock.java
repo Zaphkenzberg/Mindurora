@@ -23,6 +23,7 @@ public class SwitchBlock extends Block{
         autoResetEnabled = false;
         group = BlockGroup.logic;
         envEnabled = Env.any;
+        // AURORA: ulocate filter "logic" — фільтр ulocate "логіка"
         flags = arc.struct.EnumSet.of(BlockFlag.logic);
 
         config(Boolean.class, (SwitchBuild entity, Boolean b) -> entity.enabled = b);

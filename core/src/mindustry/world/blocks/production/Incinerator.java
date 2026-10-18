@@ -21,6 +21,7 @@ public class Incinerator extends Block{
         hasLiquids = true;
         update = true;
         solid = true;
+        // AURORA: ulocate filter "transfer" — фільтр ulocate "передача"
         flags = arc.struct.EnumSet.of(BlockFlag.transfer);
     }
 

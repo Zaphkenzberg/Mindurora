@@ -50,6 +50,7 @@ public class MassDriver extends Block{
         outlineIcon = true;
         sync = true;
         envEnabled |= Env.space;
+        // AURORA: ulocate filter "transfer" — фільтр ulocate "передача"
         flags = arc.struct.EnumSet.of(BlockFlag.transfer);
 
         //point2 is relative

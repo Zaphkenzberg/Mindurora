@@ -373,6 +373,7 @@ public class SettingsMenuDialog extends BaseDialog{
             game.checkPref("console", false);
         }
 
+        // AURORA: default 75% on phones — За замовчуванням 75% на телефоні
         int[] lastUiScale = {settings.getInt("uiscale", defaultUiScale())};
 
         graphics.sliderPref("uiscale", defaultUiScale(), 25, 300, 5, s -> {

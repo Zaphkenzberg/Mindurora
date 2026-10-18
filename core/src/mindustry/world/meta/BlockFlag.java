@@ -12,11 +12,11 @@ public enum BlockFlag{
     turret,
     /** A block that transforms resources. */
     factory,
-    /** Factory Units */
+    /** AURORA: unit factory / reconstructor (ulocate) — Завод юнітів / реконструктор (ulocate). */
     ufactory,
     /** Repair point. */
     repair,
-    /** Block Repair point. */
+    /** AURORA: block repair: mender, regen projector (ulocate); replaces blockRepair — Ремонт блоків: мендер, регенератор (ulocate); замість blockRepair. */
     brepair,
     /** Block that stored power for resupply. */
     battery,
@@ -28,15 +28,15 @@ public enum BlockFlag{
     drill,
     /** Force projector block. */
     shield,
-    /** Wall */
+    /** AURORA: walls and shock mines (ulocate) — Стіни й шокові міни (ulocate). */
     wall,
-    /** Overdrive  */
+    /** AURORA: overdrive projector (ulocate) — Прискорювач (ulocate). */
     overdrive,
-    /** Block Logic  */
+    /** AURORA: logic blocks: processors, displays, memory, switches (ulocate) — Логічні блоки: процесори, дисплеї, пам'ять, перемикачі (ulocate). */
     logic,
-    /** PowerNode */
+    /** AURORA: power nodes and diodes (ulocate) — Вузли енергії й діоди (ulocate). */
     powernode,
-    /** Transfer */
+    /** AURORA: item/liquid transport: conveyors, bridges, routers, unloaders (ulocate) — Транспорт предметів/рідин: конвеєри, мости, роутери, розвантажувачі (ulocate). */
     transfer,
 
     //special, internal identifiers
@@ -49,6 +49,6 @@ public enum BlockFlag{
 
     public final static BlockFlag[] all = values();
 
-    /** Values for logic only. Filters out some internal flags. */
+    /** Values for logic only. Filters out some internal flags. AURORA: + ulocate filters — + фільтри ulocate. */
     public final static BlockFlag[] allLogic = {core, storage, generator, turret, factory, ufactory, repair, brepair, battery, reactor, drill, shield, wall, overdrive, logic, powernode, transfer};
 }

@@ -43,6 +43,7 @@ public class Conveyor extends Block implements Autotiler{
         hasItems = true;
         itemCapacity = capacity;
         priority = TargetPriority.transport;
+        // AURORA: ulocate filter "transfer" — фільтр ulocate "передача"
         flags = arc.struct.EnumSet.of(BlockFlag.transfer);
         conveyorPlacement = true;
         underBullets = true;

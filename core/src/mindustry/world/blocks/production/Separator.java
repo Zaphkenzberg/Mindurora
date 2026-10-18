@@ -31,6 +31,7 @@ public class Separator extends Block{
         hasItems = true;
         hasLiquids = true;
         sync = true;
+        // AURORA: ulocate filter "factory" — фільтр ulocate "фабрика"
         flags = arc.struct.EnumSet.of(BlockFlag.factory);
     }
 

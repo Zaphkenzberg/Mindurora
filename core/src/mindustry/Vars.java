@@ -246,22 +246,24 @@ public class Vars implements Loadable{
     public static final String schematicExtension = "msch";
     /** path to the java executable */
     public static String javaPath;
-    /** Multiplayer Campaigh **/
-    /** 0 = звичайна кампанія, 1 = своя планета Aurora, 2 = гість на чужій планеті Aurora (тимчасово, стирається при кожному вході). */
+    /**
+     * AURORA campaign slot: 0 normal campaign, 1 own Aurora planet, 2 guest on someone's planet (temporary, wiped on every join).
+     * — Слот кампанії AURORA: 0 звичайна кампанія, 1 своя планета Aurora, 2 гість на чужій планеті (тимчасово, стирається при кожному вході).
+     */
     public static int campaignSlot = 0;
     public static final int slotNormal = 0, slotAurora = 1, slotGuest = 2;
 
-    /** Будь-який режим Aurora: своя планета або гість. */
+    /** Any Aurora mode: own planet or guest — Будь-який режим Aurora: своя планета або гість. */
     public static boolean auroraSlot(){
         return campaignSlot != slotNormal;
     }
 
-    /** Префікс ключів налаштувань для поточного слоту. */
+    /** Settings key prefix of the current slot — Префікс ключів налаштувань поточного слоту. */
     public static String campaignPrefix(){
         return campaignSlot == slotNormal ? "" : campaignSlot == slotGuest ? "cg-" : "c2-";
     }
 
-    /** Папка сейвів для слоту. */
+    /** Save folder of a slot — Папка сейвів слоту. */
     public static String campaignSaveDir(int slot){
         return slot == slotNormal ? "saves/" : slot == slotGuest ? "saves-guest/" : "saves2/";
     }
@@ -479,7 +481,7 @@ public class Vars implements Loadable{
         loadedFileLogger = true;
     }
 
-    /** AURORA: масштаб інтерфейсу за замовчуванням - 75% на телефоні, 100% на ПК. */
+    /** AURORA: default UI scale, 75% on phones, 100% on PC — Масштаб інтерфейсу за замовчуванням: 75% на телефоні, 100% на ПК. */
     public static int defaultUiScale(){
         return Core.app != null && Core.app.isMobile() ? 75 : 100;
     }

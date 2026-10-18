@@ -14,6 +14,7 @@ public class LiquidRouter extends LiquidBlock{
         noUpdateDisabled = true;
         canOverdrive = false;
         floating = true;
+        // AURORA: ulocate filter "transfer" — фільтр ulocate "передача"
         flags = arc.struct.EnumSet.of(BlockFlag.transfer);
     }
 

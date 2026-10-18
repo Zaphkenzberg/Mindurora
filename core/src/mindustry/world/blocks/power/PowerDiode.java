@@ -24,6 +24,7 @@ public class PowerDiode extends Block{
         noUpdateDisabled = true;
         schematicPriority = 10;
         envEnabled |= Env.space;
+        // AURORA: ulocate filter "powernode" — фільтр ulocate "вузол енергії"
         flags = arc.struct.EnumSet.of(BlockFlag.powernode);
     }
 

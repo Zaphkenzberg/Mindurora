@@ -50,7 +50,7 @@ public class MenuFragment{
             parent = group;
 
             mindustry.graphics.AuroraMenuRenderer auroraMenu = new mindustry.graphics.AuroraMenuRenderer();
-            //AURORA: фон меню - планета зі щитом; aurora-menu=false повертає ванільний фон
+            // AURORA: menu background is the Aurora planet; aurora-menu=false restores vanilla — Фон меню — планета Aurora; aurora-menu=false повертає ванільний
             parent.fill((x, y, w, h) -> {
                 if(Core.settings.getBool("aurora-menu", true)) auroraMenu.render();
                 else renderer.render();
@@ -145,7 +145,7 @@ public class MenuFragment{
             container.name = "buttons";
             container.setSize(Core.graphics.getWidth(), Core.graphics.getHeight());
 
-            //AURORA: кнопки рівною смугою - у горизонтальному режимі внизу, у вертикальному зліва
+            // AURORA: buttons in one strip — bottom in landscape, left in portrait — Кнопки однією смугою: унизу горизонтально, зліва вертикально
             boolean land = !Core.graphics.isPortrait();
 
             MobileButton
@@ -166,16 +166,18 @@ public class MenuFragment{
             all.addAll(customs);
             all.add((MobileButton)(ios ? about : exit));
 
-            //розмір кнопки під кількість кнопок і доступне місце (в одиницях UI), але не більше 88
+            // Button size from the button count and free space (UI units), 56..88 — Розмір кнопки під кількість і вільне місце (одиниці UI), 56..88
             float pad = 3f;
             float avail = land
                 ? (Core.graphics.getWidth() - Core.scene.marginLeft - Core.scene.marginRight) / Scl.scl(1f) - 120f
-                : (Core.graphics.getHeight() - Core.scene.marginTop - Core.scene.marginBottom) / Scl.scl(1f) - 180f; //мінус місце під логотип
+                : (Core.graphics.getHeight() - Core.scene.marginTop - Core.scene.marginBottom) / Scl.scl(1f) - 180f; // minus the logo — мінус логотип
             float size = Mathf.clamp(avail / all.size - pad * 2f, 56f, 88f);
             container.margin(0f);
 
-            //прокрутка не потрібна (розмір кнопок підібрано під екран), а без неї таблиця займає весь екран,
-            //тож вирівнювання працює: горизонтально - смуга внизу по центру, вертикально - стовпчик зліва по центру
+            // No scrolling (sizes fit the screen), so the table fills the screen and alignment works:
+            // centered strip at the bottom / centered column on the left
+            // — Без прокрутки (розмір під екран), тож таблиця на весь екран і вирівнювання працює:
+            // смуга внизу по центру / стовпчик зліва по центру
             if(container.parent instanceof arc.scene.ui.ScrollPane sp) sp.setScrollingDisabled(true, true);
 
             Table strip = new Table();
@@ -253,7 +255,7 @@ public class MenuFragment{
             buildDesktop();
         }
     }
-    /** AURORA: своя планета. Свій Authority стартує одразу; якщо порт зайнятий - вікно налаштувань. */
+    /** AURORA: own planet. Our Authority starts at once; if the port is busy, the settings dialog — Своя планета. Свій Authority стартує одразу; якщо порт зайнятий — вікно налаштувань. */
     void openAurora(){
         if(!AuroraAuthority.start()){
             ui.showInfoToast("[scarlet]Aurora:[] не вдалося запустити Authority\n(порт " + Core.settings.getInt("aurora-port", 8443) + " зайнятий?)", 5f);
@@ -265,7 +267,7 @@ public class MenuFragment{
         checkPlay(ui.planet::show);
     }
 
-    /** AURORA: звичайні режими (своя гра, завантаження, редактор) завжди у звичайному слоті, щоб не лізти в сейви Aurora. */
+    /** AURORA: normal modes (custom game, load, editor) always use the normal slot, never Aurora saves — Звичайні режими (своя гра, завантаження, редактор) завжди у звичайному слоті, не в сейвах Aurora. */
     Runnable normal(Runnable r){
         return () -> {
             if(campaignSlot != 0) switchCampaign(0);
@@ -273,6 +275,7 @@ public class MenuFragment{
         };
     }
 
+    /** AURORA: switch campaign slot: save folder, keys, unlocks, research progress — Перемкнути слот кампанії: папка сейвів, ключі, дослідження, прогрес. */
     public void switchCampaign(int slot) {
             campaignSlot = slot;
             saveDirectory = dataDirectory.child(campaignSaveDir(slot));

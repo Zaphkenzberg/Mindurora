@@ -46,6 +46,7 @@ public class RegenProjector extends Block{
         suppressable = true;
         envEnabled |= Env.space;
         rotateDraw = false;
+        // AURORA: ulocate filter "brepair" — фільтр ulocate "ремонт блоків"
         flags = arc.struct.EnumSet.of(BlockFlag.brepair);
     }
 

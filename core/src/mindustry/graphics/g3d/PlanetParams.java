@@ -36,6 +36,6 @@ public class PlanetParams{
     public transient int viewW = -1, viewH = -1;
     /** If true, atmosphere will be drawn regardless of player options. */
     public transient boolean alwaysDrawAtmosphere = false;
-    /** AURORA: якщо false, сітка секторів не підсвічується під мишкою (фон меню). */
+    /** AURORA: if false, the sector grid does not highlight under the mouse (menu background) — Якщо false, сітка секторів не підсвічується під мишкою (фон меню). */
     public transient boolean mouseGrid = true;
 }

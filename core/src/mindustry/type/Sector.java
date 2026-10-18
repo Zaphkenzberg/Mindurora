@@ -59,11 +59,12 @@ public class Sector{
         return tmpSeq1;
     }
 
-    /** JSON SectorInfo в Authority. */
+    /** AURORA: SectorInfo as JSON for Authority — SectorInfo в JSON для Authority. */
     public @Nullable String exportInfo(){
         return mindustry.io.JsonIO.json.toJson(info);
     }
 
+    /** AURORA: restore info received from Authority — Відновити info, отримане з Authority. */
     public void importInfo(String json){
         info = mindustry.io.JsonIO.json.fromJson(SectorInfo.class, json);
         saveInfo();
@@ -106,6 +107,7 @@ public class Sector{
     public boolean allowLaunchLoadout(){
         return (preset != null && preset.overrideLaunchDefaults) ? preset.allowLaunchLoadout : planet.allowLaunchLoadout;
     }
+    /** AURORA: slot-prefixed info key — Ключ info з префіксом слоту. */
     private String infoKey(){
         return campaignPrefix() + planet.name + "-s-" + id + "-info";
     }
@@ -117,6 +119,7 @@ public class Sector{
     public void loadInfo(){
         info = Core.settings.getJson(infoKey(), SectorInfo.class, SectorInfo::new);
 
+        //fix an old naming bug; this doesn't happen with new saves, but old saves need manual fixes
         if(info.resources.contains(Blocks.water)){
             info.resources.remove(Blocks.water);
             info.resources.add(Liquids.water);

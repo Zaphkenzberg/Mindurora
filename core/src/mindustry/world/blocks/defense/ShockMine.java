@@ -33,6 +33,7 @@ public class ShockMine extends Block{
         destructible = true;
         solid = false;
         targetable = false;
+        // AURORA: ulocate filter "wall" — фільтр ulocate "стіна"
         flags = arc.struct.EnumSet.of(BlockFlag.wall);
     }
 

@@ -595,20 +595,20 @@ public class JoinDialog extends BaseDialog{
 
         ui.loadfrag.show("@connecting");
 
-        // AURORA: якщо за цією адресою живе Authority, заходимо в режим Aurora (планетний UI)
+        // AURORA: if this address is an Aurora planet, enter Aurora (planet map) — Якщо за цією адресою планета Aurora, заходимо в Aurora (карта планети)
         AuroraNet.probeAndJoin(ip, port, joined -> {
             if(joined){
                 hide();
                 add.hide();
             }else{
-                //звичайна гра (не Aurora): клієнт теж має бути у звичайному слоті кампанії
+                // Normal game (not Aurora): the client must be in the normal campaign slot too — Звичайна гра (не Aurora): клієнт теж має бути у звичайному слоті
                 if(campaignSlot != 0) ui.menufrag.switchCampaign(0);
                 connectRaw(ip, port);
             }
         });
     }
 
-    /** Звичайне підключення Mindustry (оригінальне тіло connect). */
+    /** Plain Mindustry connect (the original connect body) — Звичайне підключення Mindustry (оригінальне тіло connect). */
     public void connectRaw(String ip, int port){
         if(player.name.trim().isEmpty()){
             ui.showInfo("@noname");

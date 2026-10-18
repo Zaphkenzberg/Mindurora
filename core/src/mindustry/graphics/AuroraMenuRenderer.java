@@ -16,11 +16,15 @@ import mindustry.game.*;
 import mindustry.graphics.g3d.*;
 import mindustry.type.*;
 import mindustry.ui.*;
-import mindustry.game.SectorInfo;
 
 import static mindustry.Vars.*;
 
-/** AURORA: фон головного меню - планета, що обертається, щит з перешкодами і трикутник. Не інтерактивний. */
+/**
+ * AURORA main menu background: a rotating planet showing the Aurora campaign state, a glitchy shield and a 3D cage
+ * anchored to the planet. Drag to rotate, mouse wheel to zoom.
+ * — Фон головного меню AURORA: планета зі станом кампанії Aurora, щит з перешкодами і 3D-клітка,
+ * прив'язана до планети. Тягни, щоб крутити, колесо — зум.
+ */
 public class AuroraMenuRenderer implements PlanetRenderer.PlanetInterfaceRenderer{
     final PlanetParams params = new PlanetParams();
     final FrameBuffer buffer = new FrameBuffer(2, 2);
@@ -28,25 +32,26 @@ public class AuroraMenuRenderer implements PlanetRenderer.PlanetInterfaceRendere
     final Color shield = new Color(Team.sharded.color);
     float radius = 100f;
 
-    //керування камерою: yaw/pitch у градусах, інерція після відпускання
+    // Camera control: yaw/pitch in degrees, inertia after release — Керування камерою: yaw/pitch у градусах, інерція після відпускання
     float yaw, pitch = 19f, velYaw, velPitch;
     boolean dragging;
     float zoomOffset;
     static final float autoSpin = 0.08f, dragSens = 0.25f;
 
-    //AURORA: 3D-клітка навколо планети - та сама сітка шестикутників і п'ятикутників, що й сектори (Goldberg-поліедр)
-    static final int cageSize = 1;          //0 = додекаедр, 1 = 12 п'ятикутників + 20 шестикутників (футбольний м'яч), 2 = густіше
-    static final float cageScale = 1.55f;   //висота клітки над поверхнею, у радіусах планети
+    // 3D cage: the same hex/pentagon grid as sectors (Goldberg polyhedron) — 3D-клітка: та сама сітка, що й сектори (Goldberg-поліедр)
+    static final int cageSize = 1;          // 0 dodecahedron, 1 football (12 pent + 20 hex), 2 denser — 0 додекаедр, 1 м'яч (12 п'ятикутників + 20 шестикутників), 2 густіше
+    static final float cageScale = 1.55f;   // cage height in planet radii — висота клітки в радіусах планети
     final PlanetGrid grid = PlanetGrid.create(cageSize);
     final Mat3D mat = new Mat3D();
     final Vec3 camPosWorld = new Vec3();
-    //екранні координати вершин клітки і точок прив'язки (центри п'ятикутників) + видимість
+    // Screen coords of cage corners (v), anchors on the surface (s) and pentagon centers on the cage (a)
+    // — Екранні координати вершин клітки (v), точок прив'язки на поверхні (s) і центрів п'ятикутників на клітці (a)
     final float[] vx, vy, sx, sy, ax, ay;
     final boolean[] vFront, sFront;
     final int[] anchors;
-    float cx2, cy2;
 
-    //справжнє перекриття планетою: ребра й троси розбиті на відрізки, кожна точка перевіряється променем від камери
+    // Real occlusion: edges and tethers are split into samples, each tested by a ray from the camera
+    // — Справжнє перекриття: ребра й троси розбиті на точки, кожна перевіряється променем від камери
     static final int edgeSteps = 12, tetherSteps = 8;
     final Vec3[] cornerWorld;
     final float[] ex, ey, tx, ty;
@@ -56,7 +61,8 @@ public class AuroraMenuRenderer implements PlanetRenderer.PlanetInterfaceRendere
 
     public AuroraMenuRenderer(){
         params.planet = Planets.serpulo;
-        //drawUi потрібен, щоб планета викликала renderSectors (стан секторів Aurora); орбіти вимикаємо під час рендеру
+        // drawUi makes the planet call renderSectors (Aurora sector state); orbits are hidden during render
+        // — drawUi потрібен, щоб планета викликала renderSectors (стан секторів Aurora); орбіти ховаємо під час рендеру
         params.drawUi = true;
         params.uiAlpha = 1f;
         params.mouseGrid = false;
@@ -95,16 +101,16 @@ public class AuroraMenuRenderer implements PlanetRenderer.PlanetInterfaceRendere
         infos = new SectorInfo[ns];
     }
 
-    // ---------- стан кампанії Aurora (слот 2: saves2/ і ключі c2-) ----------
+    // ---------- Aurora campaign state (own planet: saves2/ and c2- keys) — Стан кампанії Aurora (своя планета: saves2/ і ключі c2-) ----------
 
     boolean[] captured, attacked, orbits;
     SectorInfo[] infos;
     int lastCap = -1, lastAtt = -1;
     float scanTimer = 9999f;
 
-    /** Читає сейви і SectorInfo Aurora-кампанії напряму, не перемикаючи поточний слот. */
+    /** Reads own Aurora saves and SectorInfo directly, without switching the current slot — Читає сейви й SectorInfo своєї Aurora напряму, не перемикаючи слот. */
     void scan(){
-        Fi dir = dataDirectory.child("saves2");
+        Fi dir = dataDirectory.child(campaignSaveDir(slotAurora));
         String pn = params.planet.name;
         for(Sector sec : params.planet.sectors){
             boolean save = dir.child("sector-" + pn + "-" + sec.id + "." + saveExtension).exists();
@@ -120,7 +126,7 @@ public class AuroraMenuRenderer implements PlanetRenderer.PlanetInterfaceRendere
             infos[sec.id] = info;
         }
 
-        //діагностика в консоль, лише коли щось змінилось
+        // Log only when something changed — Пишемо в лог лише при змінах
         int nc = 0, na = 0;
         for(int i = 0; i < captured.length; i++){
             if(captured[i]) nc++;
@@ -139,13 +145,13 @@ public class AuroraMenuRenderer implements PlanetRenderer.PlanetInterfaceRendere
         var planets = renderer.planets;
 
         for(Sector sec : planet.sectors){
-            //бази всіх гравців - звичайним кольором (Sharded)
+            // Everyone's bases in the normal color (Sharded) — Бази всіх гравців звичайним кольором (Sharded)
             boolean lb = captured[sec.id], rb = mindustry.AuroraNet.remoteBase(sec);
             if(lb || rb){
                 planets.drawSelection(sec, Tmp.c1.set(Team.sharded.color).mul(0.8f).a(1f), 0.026f, -0.001f);
             }
 
-            //живі сектори: синя рамка / блимання синім / блимання червоним
+            // Live sectors: blue frame / blinking blue / blinking red — Живі сектори: синя рамка / блимання синім / блимання червоним
             SectorInfo info = infos[sec.id];
             mindustry.AuroraNet.drawLiveSector(planets, sec, lb || rb,
                 lb && info != null ? info.waves : mindustry.AuroraNet.remoteWaves(sec),
@@ -161,7 +167,7 @@ public class AuroraMenuRenderer implements PlanetRenderer.PlanetInterfaceRendere
         var planets = renderer.planets;
         float iw = 64f / 4f;
 
-        //іконки як на звичайній карті: ⚠ для нападу, інакше іконка сектора
+        // Icons like on the campaign map: ⚠ for attack, else the sector icon — Іконки як на карті кампанії: ⚠ для нападу, інакше іконка сектора
         for(Sector sec : planet.sectors){
             SectorInfo info = infos[sec.id];
             if(info == null || !captured[sec.id]) continue;
@@ -184,14 +190,14 @@ public class AuroraMenuRenderer implements PlanetRenderer.PlanetInterfaceRendere
         int w = Core.graphics.getWidth(), h = Core.graphics.getHeight();
         updateInput();
 
-        //камера по колу навколо планети, трохи згори
+        // Camera on a sphere around the planet — Камера на сфері навколо планети
         params.camPos.set(0f, 0f, 1f).rotate(Vec3.X, -pitch).rotate(Vec3.Y, yaw);
-        //планета далі: у вертикальному режимі ще далі, ніж у горизонтальному; колесо додає зсув
+        // Further away in portrait than in landscape; the wheel adds an offset — У вертикальному режимі далі, ніж у горизонтальному; колесо додає зсув
         params.zoom = (Core.graphics.isPortrait() ? 1.9f : 1.6f) + zoomOffset;
         params.viewW = w;
         params.viewH = h;
 
-        //раз на 5 с перечитати стан секторів Aurora
+        // Re-read Aurora sector state every 5 s — Раз на 5 с перечитуємо стан секторів Aurora
         scanTimer += Time.delta;
         if(scanTimer > 60f * 5f){
             scanTimer = 0f;
@@ -202,7 +208,7 @@ public class AuroraMenuRenderer implements PlanetRenderer.PlanetInterfaceRendere
             }
         }
 
-        //орбіти планет у фоні меню не потрібні
+        // No orbit rings on the menu background (restored after render) — Орбіти на фоні меню не потрібні (відновлюємо після рендеру)
         var all = content.planets();
         if(orbits == null || orbits.length != all.size) orbits = new boolean[all.size];
         for(int i = 0; i < all.size; i++){
@@ -215,7 +221,7 @@ public class AuroraMenuRenderer implements PlanetRenderer.PlanetInterfaceRendere
         buffer.begin(Color.black);
         renderer.planets.render(params);
 
-        //радіус планети на екрані: центр і точка на краю
+        // Planet radius on screen: center and a point on the edge — Радіус планети на екрані: центр і точка на краю
         Camera3D cam = renderer.planets.cam;
         float pr = params.planet.radius;
         tmp.set(params.planet.position);
@@ -224,8 +230,6 @@ public class AuroraMenuRenderer implements PlanetRenderer.PlanetInterfaceRendere
         cam.project(tmp2);
         float r = tmp.dst(tmp2);
         if(r > 1f && !Float.isNaN(r)) radius = r;
-        cx2 = tmp.x;
-        cy2 = tmp.y;
         projectCage(cam, pr);
         buffer.end();
         for(int i = 0; i < all.size; i++) all.get(i).drawOrbit = orbits[i];
@@ -237,7 +241,8 @@ public class AuroraMenuRenderer implements PlanetRenderer.PlanetInterfaceRendere
         Draw.reset();
     }
 
-    /** Проєктує вершини клітки і точки прив'язки на екран. Викликати, поки камера планети активна. */
+    /** Projects cage corners, edge samples and tethers to the screen. Call while the planet camera is active
+     * — Проєктує вершини клітки, точки ребер і троси на екран. Викликати, поки камера планети активна. */
     void projectCage(Camera3D cam, float pr){
         Vec3 center = params.planet.position;
         params.planet.getTransform(mat);
@@ -254,7 +259,7 @@ public class AuroraMenuRenderer implements PlanetRenderer.PlanetInterfaceRendere
             vy[c.id] = tmp2.y;
         }
 
-        //ребра: точки вздовж прямої між вершинами
+        // Edges: samples along the line between corners — Ребра: точки вздовж прямої між вершинами
         for(PlanetGrid.Edge e : grid.edges){
             Vec3 va = cornerWorld[e.corners[0].id], vb = cornerWorld[e.corners[1].id];
             for(int k = 0; k < edgeSteps; k++){
@@ -269,16 +274,16 @@ public class AuroraMenuRenderer implements PlanetRenderer.PlanetInterfaceRendere
 
         for(int i = 0; i < anchors.length; i++){
             Vec3 dir = grid.tiles[anchors[i]].v;
-            //точка на поверхні
+            // Anchor on the surface — Точка прив'язки на поверхні
             Mat3D.prj(tmp3.set(dir).nor().scl(pr * 1.01f), mat);
             tmp2.set(tmp3);
             sFront[i] = front(tmp2, center);
             cam.project(tmp2);
             sx[i] = tmp2.x;
             sy[i] = tmp2.y;
-            //центр п'ятикутника на клітці
+            // Pentagon center on the cage — Центр п'ятикутника на клітці
             Mat3D.prj(tmp.set(dir).nor().scl(pr * cageScale), mat);
-            //трос від клітки до поверхні
+            // Tether from the cage to the surface — Трос від клітки до поверхні
             for(int k = 0; k < tetherSteps; k++){
                 int idx = i * tetherSteps + k;
                 tmp2.set(tmp).lerp(tmp3, k / (float)(tetherSteps - 1));
@@ -294,7 +299,7 @@ public class AuroraMenuRenderer implements PlanetRenderer.PlanetInterfaceRendere
         }
     }
 
-    /** Чи точку закриває планета: промінь від камери до точки перетинає кулю планети раніше. */
+    /** Is the point hidden by the planet: the camera ray hits the planet sphere first — Чи точку закриває планета: промінь від камери раніше влучає в кулю планети. */
     boolean occluded(Vec3 p, Vec3 center){
         float dx = p.x - camPosWorld.x, dy = p.y - camPosWorld.y, dz = p.z - camPosWorld.z;
         float len = (float)Math.sqrt(dx * dx + dy * dy + dz * dz);
@@ -310,7 +315,7 @@ public class AuroraMenuRenderer implements PlanetRenderer.PlanetInterfaceRendere
         return t0 > 0f && t0 < len;
     }
 
-    /** Чи точка на видимому боці (не за планетою відносно камери). */
+    /** Is the point on the camera-facing half of the cage — Чи точка на повернутій до камери половині клітки. */
     boolean front(Vec3 p, Vec3 center){
         float nx = p.x - center.x, ny = p.y - center.y, nz = p.z - center.z;
         float dx = camPosWorld.x - p.x, dy = camPosWorld.y - p.y, dz = camPosWorld.z - p.z;
@@ -318,7 +323,7 @@ public class AuroraMenuRenderer implements PlanetRenderer.PlanetInterfaceRendere
     }
 
     void drawCage(float jx, float jy, float alpha, Color col, float t){
-        //ребра: задня половина клітки тонка й ледь видна, передня яскрава; те, що за планетою, не малюється
+        // Back half thin and faint, front bright; what the planet hides is skipped — Задня половина тонка й тьмяна, передня яскрава; закрите планетою не малюється
         for(int pass = 0; pass < 2; pass++){
             boolean wantFront = pass == 1;
             Lines.stroke(Scl.scl(wantFront ? 3.2f : 1.2f));
@@ -334,14 +339,14 @@ public class AuroraMenuRenderer implements PlanetRenderer.PlanetInterfaceRendere
             }
         }
 
-        //вузли: передні звичайні, задні маленькі й тьмяні, закриті планетою - ні
+        // Nodes: front normal, back small and faint, hidden ones skipped — Вузли: передні звичайні, задні малі й тьмяні, закриті — ні
         for(int i = 0; i < vx.length; i++){
             if(!vVis[i]) continue;
             Draw.color(col, alpha * (vFront[i] ? 1f : 0.25f));
             Fill.circle(vx[i] + jx, vy[i] + jy, Scl.scl(vFront[i] ? 2.6f : 1.4f));
         }
 
-        //троси від центрів п'ятикутників до точок прив'язки, з перекриттям планетою
+        // Dashed tethers from pentagon centers to the anchors — Пунктирні троси від центрів п'ятикутників до точок прив'язки
         for(int i = 0; i < anchors.length; i++){
             float a = alpha * (sFront[i] ? 0.8f : 0.2f);
             Lines.stroke(Scl.scl(1.2f));
@@ -358,7 +363,7 @@ public class AuroraMenuRenderer implements PlanetRenderer.PlanetInterfaceRendere
         }
     }
 
-    /** Обертання планети мишкою/пальцем: тягнеш - крутиш, відпустив - докручує з інерцією. Колесо - зум. */
+    /** Drag rotates, release keeps spinning with inertia, wheel zooms — Тягнеш — крутиш, відпустив — докручує з інерцією, колесо — зум. */
     void updateInput(){
         if(Core.input.justTouched()) dragging = !overUi();
         if(!Core.input.isTouched()) dragging = false;
@@ -369,7 +374,7 @@ public class AuroraMenuRenderer implements PlanetRenderer.PlanetInterfaceRendere
             yaw += velYaw;
             pitch += velPitch;
         }else{
-            //інерція плавно згасає, далі звичайне автообертання
+            // Inertia fades, then the usual auto-spin — Інерція згасає, далі звичайне автообертання
             velYaw = Mathf.lerpDelta(velYaw, 0f, 0.06f);
             velPitch = Mathf.lerpDelta(velPitch, 0f, 0.06f);
             yaw += velYaw * Time.delta + autoSpin * Time.delta;
@@ -383,7 +388,7 @@ public class AuroraMenuRenderer implements PlanetRenderer.PlanetInterfaceRendere
         }
     }
 
-    /** Чи курсор над кнопкою меню (тоді не крутимо планету). */
+    /** Is the pointer over a button, text field or dialog (then don't rotate) — Чи курсор над кнопкою, полем чи вікном (тоді не крутимо). */
     boolean overUi(){
         arc.scene.Element e = Core.scene.hit(Core.input.mouseX(), Core.input.mouseY(), true);
         while(e != null){
@@ -396,17 +401,17 @@ public class AuroraMenuRenderer implements PlanetRenderer.PlanetInterfaceRendere
     void drawShield(float cx, float cy, float r){
         float t = Time.time;
         int seed = (int)(t / 5f);
-        //рідкісний сильний збій: увесь щит смикається
+        // Rare strong glitch: the whole shield jerks — Рідкісний сильний збій: увесь щит смикається
         boolean glitch = Mathf.randomSeed(seed * 7L) < 0.07f;
         float jx = glitch ? Mathf.randomSeedRange(seed * 13L, 10f) : 0f;
         float jy = glitch ? Mathf.randomSeedRange(seed * 17L, 4f) : 0f;
         float sr = r * 1.18f;
 
-        //слабке світіння всередині щита
+        // Faint glow inside — Слабке світіння всередині
         Draw.color(shield, 0.06f + Mathf.absin(t, 20f, 0.04f));
         Fill.circle(cx + jx, cy + jy, sr);
 
-        //кільце з сегментів, деякі пропадають і мерехтять
+        // Ring of segments, some missing and flickering — Кільце з сегментів, деякі пропадають і мерехтять
         int segs = 90;
         Lines.stroke(Scl.scl(2.2f));
         for(int i = 0; i < segs; i++){
@@ -419,7 +424,7 @@ public class AuroraMenuRenderer implements PlanetRenderer.PlanetInterfaceRendere
                 cx + jx + Angles.trnsx(a2, sr), cy + jy + Angles.trnsy(a2, sr));
         }
 
-        //перешкоди: короткі горизонтальні смуги в зоні щита
+        // Interference: short horizontal stripes inside the shield — Перешкоди: короткі горизонтальні смуги в зоні щита
         int lines = glitch ? 60 : 24;
         for(int i = 0; i < lines; i++){
             float ly = cy + Mathf.randomSeedRange(seed * 977L + i, sr);
@@ -431,9 +436,8 @@ public class AuroraMenuRenderer implements PlanetRenderer.PlanetInterfaceRendere
             Lines.line(lx - len / 2f, ly, lx + len / 2f, ly);
         }
 
-        //3D-клітка, прив'язана до планети
+        // 3D cage anchored to the planet; RGB split while glitching — 3D-клітка, прив'язана до планети; RGB-зсув під час збою
         if(glitch){
-            //хроматичний зсув під час збою
             drawCage(jx + Scl.scl(4f), jy, 0.4f, Color.scarlet, t);
             drawCage(jx - Scl.scl(4f), jy, 0.4f, Color.cyan, t);
         }

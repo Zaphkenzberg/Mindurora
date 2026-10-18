@@ -50,6 +50,7 @@ public class LaunchPad extends Block{
         solid = true;
         update = true;
         configurable = true;
+        // AURORA: also "storage" for ulocate — також "сховище" для ulocate
         flags = EnumSet.of(BlockFlag.launchPad, BlockFlag.storage);
     }
 

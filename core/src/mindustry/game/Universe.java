@@ -343,10 +343,12 @@ public class Universe{
         turn = Core.settings.getInt(key("turn"));
     }
 
-    /** Reloads campaign counters for the current campaign slot. Call after switching campaignSlot. */
+    /** AURORA: reloads campaign counters for the current slot, call after switching campaignSlot — Перечитує лічильники кампанії для поточного слоту, викликати після зміни campaignSlot. */
     public void reloadForSlot(){
         load();
     }
+
+    /** AURORA: slot-prefixed key — Ключ з префіксом слоту. */
     private String key(String base){
         return campaignPrefix() + base;
     }
