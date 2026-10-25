@@ -99,6 +99,13 @@ public class Saves{
         Seq<Remap> remaps = new Seq<>();
         ObjectSet<Sector> remapped = new ObjectSet<>();
 
+        // AURORA: load() runs again on every Aurora sector download and slot switch; forget the old slots first,
+        // else every sector "has two corresponding saves" (the same file twice) — load() викликається знову при кожному
+        // завантаженні сектора Aurora і зміні слоту; спершу забуваємо старі слоти, інакше кожен сектор "має два сейви" (той самий файл двічі)
+        for(var planet : content.planets()){
+            for(Sector sector : planet.sectors) sector.save = null;
+        }
+
         //automatically assign sector save slots
         for(SaveSlot slot : saves){
             if(slot.getSector() != null){

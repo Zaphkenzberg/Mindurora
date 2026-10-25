@@ -201,8 +201,9 @@ public class Sector{
 
     /** @return light dot product in the range [0, 1]. */
     public float getLight(){
-        Vec3 normal = Tmp.v31.set(tile.v).rotate(Vec3.Y, -planet.getRotation()).nor();
-        Vec3 light = Tmp.v32.set(planet.solarSystem.position).sub(planet.position).nor();
+        // AURORA: real orbit, not the cosmetic sped-up one — справжня орбіта, а не косметично прискорена
+        Vec3 normal = Tmp.v31.set(tile.v).rotate(Vec3.Y, -planet.getRealRotation()).nor();
+        Vec3 light = planet.solarSystem.getRealWorldPosition(Tmp.v32).sub(planet.getRealWorldPosition(Tmp.v33)).nor();
         //lightness in [0, 1]
         return (normal.dot(light) + 1f) / 2f;
     }

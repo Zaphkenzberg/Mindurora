@@ -363,6 +363,11 @@ public class NetServer implements ApplicationListener{
                 player.sendMessage("[scarlet]Vote-kick is disabled on this server.");
                 return;
             }
+            // AURORA: only the planet host removes players — Видаляти гравців може лише хост планети
+            if(mindustry.AuroraNet.hostingAurora()){
+                player.sendMessage(mindustry.AuroraNet.tr("server.owneronly"));
+                return;
+            }
 
             if(Groups.player.size() < 3){
                 player.sendMessage("[scarlet]At least 3 players are needed to start a votekick.");
@@ -796,6 +801,13 @@ public class NetServer implements ApplicationListener{
             return;
         }
 
+        // AURORA: kick / ban only by the planet host — Кік / бан лише від хоста планети
+        if((action == AdminAction.kick || action == AdminAction.ban) && !mindustry.AuroraNet.mayRemove(player)){
+            warn("Aurora: @ tried to @ @, but only the planet host may remove players.", player.plainName(), action.name(), other.plainName());
+            if(player.con != null) player.sendMessage(mindustry.AuroraNet.tr("server.owneronly"));
+            return;
+        }
+
         Events.fire(new EventType.AdminRequestEvent(player, other, action));
 
         switch(action){
@@ -806,8 +818,13 @@ public class NetServer implements ApplicationListener{
                 info("&lc@ &fi&lk[&lb@&fi&lk]&fb has skipped the wave.", player.plainName(), player.uuid());
             }
             case ban -> {
-                netServer.admins.banPlayerID(other.con.uuid);
-                netServer.admins.banPlayerIP(other.con.address);
+                // AURORA: ban on the whole planet (Authority), not in this PC's server list — Бан на всю планету (Authority), а не в списку сервера цього ПК
+                if(mindustry.AuroraNet.hostingAurora()){
+                    mindustry.AuroraNet.planetBan(other);
+                }else{
+                    netServer.admins.banPlayerID(other.con.uuid);
+                    netServer.admins.banPlayerIP(other.con.address);
+                }
                 other.kick(KickReason.banned);
                 info("&lc@ &fi&lk[&lb@&fi&lk]&fb has banned @ &fi&lk[&lb@&fi&lk]&fb.", player.plainName(), player.uuid(), other.plainName(), other.uuid());
             }

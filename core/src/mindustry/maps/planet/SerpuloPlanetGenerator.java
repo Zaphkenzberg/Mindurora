@@ -88,6 +88,9 @@ public class SerpuloPlanetGenerator extends PlanetGenerator{
     }
 
     public boolean allowNumberedLaunch(Sector s){
+        // AURORA: "free landing" setting — any captured sector works, no Foundation core needed (like v7)
+        // — Налаштування "вільна висадка": підходить будь-який захоплений сектор, ядро Фундамент не потрібне (як у v7)
+        if(Core.settings.getBool("free-landing", false)) return s.hasBase();
         return s.hasBase() && (s.info.bestCoreType.size >= 4 || s.isBeingPlayed() && state.rules.defaultTeam.cores().contains(b -> b.block.size >= 4));
     }
 

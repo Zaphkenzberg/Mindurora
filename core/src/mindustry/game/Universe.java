@@ -17,6 +17,8 @@ import static mindustry.Vars.*;
 
 /** Updates and handles state of the campaign universe. Has no relevance to other gamemodes. */
 public class Universe{
+    /** AURORA: length of one day/night cycle, ticks (8 minutes) — Тривалість однієї доби, тіків (8 хвилин). */
+    public static double dayNightCycle = 60.0 * 60.0 * 8.0;
     private int seconds;
     private int netSeconds;
     private float secondCounter;
@@ -85,7 +87,22 @@ public class Universe{
             }
         }
 
-        if(state.hasSector() && state.getSector().planet.updateLighting && !(state.getSector().preset != null && state.getSector().preset.noLighting)){
+        // AURORA: forced night or day/night cycle from the campaign rules — Примусова ніч або цикл день/ніч із правил кампанії
+        if(state.hasSector() && state.rules.dayNightMode != 0){
+            var planet = state.getSector().planet;
+            float night = Math.min(planet.lightDstFrom, 0.25f);
+            float alpha;
+            if(state.rules.dayNightMode == 1){
+                alpha = night;
+            }else{
+                // One full day = dayNightCycle ticks; state.tick is synced, so all players see the same time — Повна доба = dayNightCycle тіків; state.tick синхронізується, тож усі бачать той самий час
+                float phase = (float)((state.tick % dayNightCycle) / dayNightCycle);
+                float day = Mathf.clamp((Mathf.sin(phase * Mathf.PI2) + 0.2f) * 1.6f);
+                alpha = Mathf.lerp(night, 1f, day);
+            }
+            state.rules.ambientLight.a = 1f - alpha;
+            state.rules.lighting = !Mathf.equal(alpha, 1f);
+        }else if(state.hasSector() && state.getSector().planet.updateLighting && !(state.getSector().preset != null && state.getSector().preset.noLighting)){
             var planet = state.getSector().planet;
             //update sector light
             float light = state.getSector().getLight();

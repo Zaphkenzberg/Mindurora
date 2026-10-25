@@ -34,14 +34,28 @@ public class ConsoleFragment extends Table{
     private int historyPos = 0;
     private int scrollPos = 0;
 
+    /**
+     * AURORA: the console (any JavaScript) works in the normal campaign and on your own planet, not on someone else's Aurora planet.
+     * — Консоль (будь-який JavaScript) працює у звичайній кампанії й на своїй планеті, але не на чужій планеті Aurora.
+     */
+    static boolean consoleOn(){
+        return settings.getBool("console") && mindustry.AuroraNet.consoleAllowed();
+    }
+
     public ConsoleFragment(){
         setFillParent(true);
         font = Fonts.def;
 
         visible(() -> {
-            if(input.keyTap(Binding.console) && settings.getBool("console") && (scene.getKeyboardFocus() == chatfield || scene.getKeyboardFocus() == null) && !ui.chatfrag.shown()){
+            // AURORA: console closed as soon as it is not allowed (joined someone's planet) — консоль закривається, щойно стає недозволеною (зайшли на чужу планету)
+            if(shown && !consoleOn()){
+                shown = false;
+                if(open) toggle();
+                if(scene.getKeyboardFocus() == chatfield) scene.setKeyboardFocus(null);
+            }
+            if(input.keyTap(Binding.console) && consoleOn() && (scene.getKeyboardFocus() == chatfield || scene.getKeyboardFocus() == null) && !ui.chatfrag.shown()){
                 shown = !shown;
-                if(shown && !open && settings.getBool("console")){
+                if(shown && !open && consoleOn()){
                     toggle();
                 }
                 if(shown){
@@ -57,7 +71,7 @@ public class ConsoleFragment extends Table{
         });
 
         update(() -> {
-            if(input.keyTap(Binding.chat) && settings.getBool("console") && (scene.getKeyboardFocus() == chatfield || scene.getKeyboardFocus() == null)){
+            if(input.keyTap(Binding.chat) && consoleOn() && (scene.getKeyboardFocus() == chatfield || scene.getKeyboardFocus() == null)){
                 toggle();
             }
 
@@ -173,6 +187,7 @@ public class ConsoleFragment extends Table{
         if(history.size < 2 || !history.get(1).equals(message)) history.insert(1, message);
 
         addMessage("[lightgray]> " + message.replace("[", "[["));
+        if(!consoleOn()) return; // AURORA
         addMessage(mods.getScripts().runConsole(injectConsoleVariables() + message).replace("[", "[["));
     }
 

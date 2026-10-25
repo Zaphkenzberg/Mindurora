@@ -371,6 +371,8 @@ public class SettingsMenuDialog extends BaseDialog{
 
         if(!mobile){
             game.checkPref("console", false);
+            // AURORA: v7-style landing next to any captured sector — Висадка як у v7: поруч із будь-яким захопленим сектором
+            game.checkPref("free-landing", false);
         }
 
         // AURORA: default 75% on phones — За замовчуванням 75% на телефоні

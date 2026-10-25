@@ -52,6 +52,8 @@ public class MenuFragment{
             mindustry.graphics.AuroraMenuRenderer auroraMenu = new mindustry.graphics.AuroraMenuRenderer();
             // AURORA: menu background is the Aurora planet; aurora-menu=false restores vanilla — Фон меню — планета Aurora; aurora-menu=false повертає ванільний
             parent.fill((x, y, w, h) -> {
+                // Hidden under the fullscreen planet map / research tree: don't draw a second planet — Під картою планети / деревом досліджень: не малюємо другу планету
+                if(ui.planet.isShown() || ui.research.isShown()) return;
                 if(Core.settings.getBool("aurora-menu", true)) auroraMenu.render();
                 else renderer.render();
             });
@@ -258,7 +260,7 @@ public class MenuFragment{
     /** AURORA: own planet. Our Authority starts at once; if the port is busy, the settings dialog — Своя планета. Свій Authority стартує одразу; якщо порт зайнятий — вікно налаштувань. */
     void openAurora(){
         if(!AuroraAuthority.start()){
-            ui.showInfoToast("[scarlet]Aurora:[] не вдалося запустити Authority\n(порт " + Core.settings.getInt("aurora-port", 8443) + " зайнятий?)", 5f);
+            ui.showInfoToast(mindustry.AuroraNet.tr("authority.startfail", String.valueOf(Core.settings.getInt("aurora-port", 8443))), 5f);
             new mindustry.ui.dialogs.AuroraSettingsDialog(() -> AuroraNet.checkAuthority(this::rebuildMenu)).show();
             return;
         }
@@ -277,6 +279,8 @@ public class MenuFragment{
 
     /** AURORA: switch campaign slot: save folder, keys, unlocks, research progress — Перемкнути слот кампанії: папка сейвів, ключі, дослідження, прогрес. */
     public void switchCampaign(int slot) {
+            // Same slot: everything is already loaded (guest is the exception, it is wiped before each join) — Той самий слот: усе вже завантажено (виняток — гість, його стирають перед кожним входом)
+            if(slot == campaignSlot && slot != slotGuest && saveDirectory != null && saveDirectory.equals(dataDirectory.child(campaignSaveDir(slot)))) return;
             campaignSlot = slot;
             saveDirectory = dataDirectory.child(campaignSaveDir(slot));
             universe.reloadForSlot();
@@ -289,6 +293,7 @@ public class MenuFragment{
 
             for (Planet p : content.planets()) {
                 for (Sector s : p.sectors) s.loadInfo();
+                p.loadRules(); // own difficulty per slot — своя складність для кожного слоту
             }
                 content.each(c -> {
                     if (c instanceof UnlockableContent u) u.reloadUnlock();

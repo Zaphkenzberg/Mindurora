@@ -220,12 +220,23 @@ public class Planet extends UnlockableContent{
         }
     }
 
+    // AURORA: rules are kept per campaign slot (key prefix), so the normal campaign and Aurora have their own difficulty
+    // — Правила зберігаються окремо для кожного слоту кампанії (префікс ключа), тож у звичайної кампанії й Aurora своя складність
     public void saveRules(){
-        Core.settings.putJson(name + "-campaign-rules", campaignRules);
+        Core.settings.putJson(mindustry.Vars.campaignPrefix() + name + "-campaign-rules", campaignRules);
     }
 
     public void loadRules(){
-        campaignRules = Core.settings.getJson(name + "-campaign-rules", CampaignRules.class, () -> campaignRules);
+        CampaignRules def = new CampaignRules();
+        applyDefaultRules(def);
+        // Aurora starts at Eradication — Aurora за замовчуванням на Викорінюванні
+        if(mindustry.Vars.auroraSlot()) def.difficulty = Difficulty.eradication;
+        campaignRules = Core.settings.getJson(mindustry.Vars.campaignPrefix() + name + "-campaign-rules", CampaignRules.class, () -> def);
+        if(campaignRules == null) campaignRules = def;
+        // Aurora allows only Eradication..Nightmare — Aurora дозволяє лише Викорінювальну..Кошмар
+        if(mindustry.Vars.auroraSlot() && (campaignRules.difficulty == null || campaignRules.difficulty.ordinal() < Difficulty.eradication.ordinal())){
+            campaignRules.difficulty = Difficulty.eradication;
+        }
     }
 
     public @Nullable Sector getStartSector(){
@@ -292,8 +303,43 @@ public class Planet extends UnlockableContent{
     }
 
     /** Calculates orbital rotation based on universe time.*/
+    /**
+     * AURORA: cosmetic orbit speed-up — planets visibly circle the sun on the map and in the menu (Kepler ratios kept).
+     * Gameplay light (Sector.getLight) uses the real, slow orbit, so day/night in sectors does not change.
+     * — Косметичне прискорення орбіт: планети помітно кружляють навколо сонця на карті й у меню (співвідношення Кеплера збережені).
+     * Ігрове світло (Sector.getLight) бере справжню, повільну орбіту, тож день/ніч у секторах не змінюється.
+     */
+    public static float orbitSpeedup = 60f;
+    /** AURORA: extra cosmetic speed for this planet only (Serpulo x3) — Додаткова косметична швидкість лише цієї планети (Serpulo x3). */
+    public float visualOrbitScale = 1f;
+
+    float visualOrbitSeconds(){
+        return headless ? 0f : (float)(Time.globalTime / 60f) * (orbitSpeedup * visualOrbitScale - 1f);
+    }
+
     public float getOrbitAngle(){
+        return (orbitOffset + (universe.secondsf() + visualOrbitSeconds()) / (orbitTime / 360f)) % 360f;
+    }
+
+    /** AURORA: orbit angle without the cosmetic speed-up — Кут орбіти без косметичного прискорення. */
+    public float getRealOrbitAngle(){
         return (orbitOffset + universe.secondsf() / (orbitTime / 360f)) % 360f;
+    }
+
+    /** AURORA: own-axis rotation for gameplay light (tidal lock follows the real orbit) — Обертання навколо осі для ігрового світла (припливне захоплення йде за справжньою орбітою). */
+    public float getRealRotation(){
+        return tidalLock ? -getRealOrbitAngle() + 90 : getRotation();
+    }
+
+    /** AURORA: world position on the real orbits — Світова позиція на справжніх орбітах. */
+    public Vec3 getRealWorldPosition(Vec3 in){
+        in.setZero();
+        for(Planet current = this; current != null; current = current.parent){
+            if(current.parent == null || Mathf.zero(current.orbitRadius)) continue;
+            float angle = current.getRealOrbitAngle();
+            in.add(Angles.trnsx(angle, current.orbitRadius), 0, Angles.trnsy(angle, current.orbitRadius));
+        }
+        return in;
     }
 
     /** Calculates rotation on own axis based on universe time.*/

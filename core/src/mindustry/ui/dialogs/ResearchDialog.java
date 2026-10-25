@@ -120,6 +120,8 @@ public class ResearchDialog extends BaseDialog{
         shown(() -> {
             checkMargin();
             Core.app.post(this::checkMargin);
+            // AURORA: ask the sector hosts for fresh stock right away — Одразу попросити в хостів секторів свіжий склад
+            mindustry.AuroraNet.refreshItems(true);
 
             Planet currPlanet = ui.planet.isShown() ?
                 ui.planet.state.planet :
@@ -627,27 +629,28 @@ public class ResearchDialog extends BaseDialog{
         void auroraSpend(TechNode node){
             if(auroraWaiting) return;
 
+            // Always the full cost: Authority opens the research only if the whole price is paid (old partial progress is ignored)
+            // — Завжди повна ціна: Authority відкриває дослідження, лише якщо оплачено всю ціну (старий частковий прогрес не враховується)
             ObjectIntMap<Item> need = new ObjectIntMap<>();
             for(int i = 0; i < node.requirements.length; i++){
                 ItemStack req = node.requirements[i];
-                int left = req.amount - node.finishedRequirements[i].amount;
-                if(left > 0) need.increment(req.item, left);
+                if(req.amount > 0) need.increment(req.item, req.amount);
             }
 
             // No partial progress in the shared campaign: everything or nothing — Часткового прогресу в спільній кампанії нема: все або нічого
             for(var e : need){
                 if(items.get(e.key) < e.value){
-                    ui.showInfoToast("[scarlet]Aurora:[] не вистачає " + e.key.emoji() + " " + e.key.localizedName, 3f);
+                    ui.showInfoToast(mindustry.AuroraNet.tr("research.missing", e.key.emoji(), e.key.localizedName), 3f);
                     return;
                 }
             }
 
             auroraWaiting = true;
-            mindustry.AuroraNet.spendConfirmed(need, ok -> {
+            mindustry.AuroraNet.spendConfirmed(need, node.content.name, ok -> {
                 auroraWaiting = false;
                 if(!ok){
-                    ui.showInfoToast("[scarlet]Aurora:[] хост планети не підтвердив витрату\n(не вистачає ресурсів у секторах або нема зв'язку)", 4f);
-                    mindustry.AuroraNet.refreshItems();
+                    ui.showInfoToast(mindustry.AuroraNet.tr("research.refused"), 4f);
+                    mindustry.AuroraNet.refreshItems(true);
                     return;
                 }
 
@@ -655,7 +658,7 @@ public class ResearchDialog extends BaseDialog{
                 boolean[] usedShine = new boolean[content.items().size];
                 for(int i = 0; i < node.requirements.length; i++){
                     ItemStack req = node.requirements[i];
-                    int left = req.amount - node.finishedRequirements[i].amount;
+                    int left = req.amount;
                     if(left > 0){
                         items.remove(req.item, left); // display only, the stock is already charged — лише показ, зі складу вже списано
                         shine[i] = true;
@@ -666,7 +669,7 @@ public class ResearchDialog extends BaseDialog{
 
                 unlock(node);
                 node.save();
-                mindustry.AuroraNet.refreshItems();
+                mindustry.AuroraNet.refreshItems(true);
 
                 Core.scene.act();
                 rebuild(shine);

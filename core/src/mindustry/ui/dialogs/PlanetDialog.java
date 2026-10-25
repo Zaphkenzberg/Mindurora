@@ -315,9 +315,16 @@
 
             void addTech(){
                 buttons.button("@techtree", Icon.tree, () -> ui.research.show()).size(200f, 54f).visible(() -> mode == look).pad(2).bottom();
-                // AURORA: planet settings, planet host only — Налаштування планети, лише для хоста планети
-                buttons.button("Aurora", Icon.planet, () -> new AuroraHostDialog().show()).size(200f, 54f)
-                    .visible(() -> mode == look && mindustry.AuroraNet.planetHost()).pad(2).bottom();
+                // AURORA: planet settings and players, planet host only. Added only when needed: a hidden button still takes
+                // space and would push the tech button toward the middle — Налаштування й гравці планети, лише хосту планети.
+                // Додаємо лише коли треба: прихована кнопка все одно займає місце й зсуває кнопку дерева до центру
+                if(mindustry.AuroraNet.planetHost()){
+                    if(Core.graphics.isPortrait()) buttons.row();
+                    buttons.button("Aurora", Icon.planet, () -> new AuroraHostDialog().show()).size(200f, 54f)
+                        .visible(() -> mode == look).pad(2).bottom();
+                    buttons.button(mindustry.AuroraNet.tr("players.button"), Icon.players, () -> new AuroraPlayersDialog().show()).size(200f, 54f)
+                        .visible(() -> mode == look).pad(2).bottom();
+                }
             }
 
             public void showOverview(){
@@ -455,9 +462,12 @@
                     for(Sector sec : planet.sectors){
                         if(canSelect(sec) || sec.unlocked() || debugSelect){
 
+                            boolean lb = sec.hasBase(), rb = mindustry.AuroraNet.remoteBase(sec);
+                            boolean atk = lb ? sec.info.attack : mindustry.AuroraNet.remoteAttack(sec);
+                            boolean wv = lb ? sec.info.waves : mindustry.AuroraNet.remoteWaves(sec);
                             Color color =
-                            // AURORA: everyone's bases in the normal color — Бази всіх гравців звичайним кольором
-                            sec.hasBase() || mindustry.AuroraNet.remoteBase(sec) ? Tmp.c2.set(mindustry.AuroraNet.baseColor).lerp(Team.crux.color, sec.hasEnemyBase() ? 0.5f : 0f) :
+                            // AURORA: everyone's bases orange, blue while someone plays there — Бази всіх гравців помаранчеві, сині, поки там хтось грає
+                            lb || rb ? Tmp.c2.set(mindustry.AuroraNet.frameColor(sec, atk, wv)).lerp(Team.crux.color, sec.hasEnemyBase() ? 0.5f : 0f) :
                             sec.preset != null && sec.preset.requireUnlock ?
                                 sec.preset.unlocked() ? Tmp.c2.set(Team.derelict.color).lerp(Color.white, Mathf.absin(Time.time, 10f, 1f)) :
                                 Color.gray :
@@ -469,10 +479,7 @@
                             }
 
                             // AURORA: someone is playing in the sector right now — У секторі зараз хтось грає
-                            boolean lb = sec.hasBase(), rb = mindustry.AuroraNet.remoteBase(sec);
-                            mindustry.AuroraNet.drawLiveSector(planets, sec, lb || rb,
-                                lb ? sec.info.waves : mindustry.AuroraNet.remoteWaves(sec),
-                                lb ? sec.info.attack : mindustry.AuroraNet.remoteAttack(sec), state.uiAlpha);
+                            mindustry.AuroraNet.drawLiveSector(planets, sec, lb || rb, wv, atk, state.uiAlpha);
                         }else{
                             planets.fill(sec, Tmp.c1.set(shadowColor).mul(1, 1, 1, state.uiAlpha), -0.001f);
                         }
@@ -1118,7 +1125,8 @@
 
                 dialog.addCloseButton();
 
-                if(sector.hasBase()){
+                // AURORA: only the planet host may abandon — покинути може лише власник планети
+                if(sector.hasBase() && mindustry.AuroraNet.mayAbandon()){
                     dialog.buttons.button("@sector.abandon", Icon.cancel, () -> abandonSectorConfirm(sector, dialog::hide));
                 }
 
@@ -1126,7 +1134,17 @@
             }
 
             public void abandonSectorConfirm(Sector sector, Runnable listener){
+                if(!mindustry.AuroraNet.mayAbandon()){
+                    ui.showInfo(mindustry.AuroraNet.tr("abandon.owneronly"));
+                    return;
+                }
                 ui.showConfirm("@sector.abandon.confirm", () -> {
+                    // AURORA: a sector nobody plays is removed on Authority too; someone plays it -> refuse
+                    // — Сектор, де ніхто не грає, видаляється і в Authority; хтось грає -> відмова
+                    if(auroraSlot() && !sector.isBeingPlayed() && !mindustry.AuroraNet.abandonOnPlanet(sector)){
+                        ui.showInfo(mindustry.AuroraNet.tr("abandon.occupied"));
+                        return;
+                    }
                     if(listener != null) listener.run();
 
                     if(sector.isBeingPlayed()){
@@ -1283,13 +1301,14 @@
                         }
                     }).row();
                 }else if(mindustry.AuroraNet.remoteBase(sector) && !sector.hasBase()){
-                    stable.add("[accent]Aurora:[] захоплений іншим гравцем").row();
+                    // AURORA: someone else's base — no "captured by another player" label, and no threat line either
+                    // — Чужа база: без напису "захоплений іншим гравцем" і без рядка загрози
                 }else if(!sector.hasBase()){
                     stable.add(Core.bundle.get("sectors.threat") + " [accent]" + sector.displayThreat()).row();
                 }
 
                 if(mindustry.AuroraNet.liveSector(sector)){
-                    stable.add("[accent]Aurora:[] зараз хтось грає").row();
+                    stable.add(mindustry.AuroraNet.tr("sector.someone")).row();
                 }
 
                 if(sector.isAttacked()){
@@ -1359,8 +1378,29 @@
 
                 // AURORA: in the shared campaign, entering a sector goes through Authority — У спільній кампанії вхід у сектор іде через Authority
                 if(auroraSlot() && mode == Mode.look){
-                    hide();
-                    mindustry.AuroraNet.switchTo(sector);
+                    // AURORA: landing on a new sector next to a captured one = vanilla launch with a loadout and resources,
+                    // paid from the shared stock through Authority. Otherwise (own / friend's base) just enter.
+                    // — Висадка на новий сектор поруч із захопленим = ванільний запуск з набором і ресурсами,
+                    // оплата зі спільного складу через Authority. Інакше (своя / дружня база) просто входимо.
+                    Sector from = sector.hasBase() || mindustry.AuroraNet.remoteBase(sector) || mindustry.AuroraNet.liveSector(sector) ? null : findLauncher(sector);
+                    if(from == null || from == sector){
+                        if(!sector.hasBase()) universe.clearLoadoutInfo(); // free landing: basic core, no stale resources — вільна висадка: базове ядро, без старих ресурсів
+                        mindustry.AuroraNet.clearLaunch();
+                        hide();
+                        mindustry.AuroraNet.switchTo(sector);
+                        return;
+                    }
+                    CoreBlock block = sector.allowLaunchSchematics() ? (from.info.bestCoreType instanceof CoreBlock b ? b : (CoreBlock)from.planet.defaultCore) : (CoreBlock)from.planet.defaultCore;
+                    loadouts.show(block, from, sector, () -> {
+                        ObjectIntMap<Item> need = new ObjectIntMap<>();
+                        for(ItemStack st : universe.getLastLoadout().requirements()) need.increment(st.item, st.amount);
+                        for(ItemStack st : universe.getLaunchResources()) need.increment(st.item, st.amount);
+                        // Paid in AuroraNet.enter() only once we really become the host — Оплата в AuroraNet.enter(), лише коли ми справді стали хостом
+                        hide();
+                        mindustry.AuroraNet.launchFrom = from;
+                        mindustry.AuroraNet.launchCost = need;
+                        mindustry.AuroraNet.switchTo(sector);
+                    });
                     return;
                 }
 

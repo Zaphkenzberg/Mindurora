@@ -182,6 +182,9 @@ public class Rules{
     public boolean lighting = false;
     /** Ambient light color, used when lighting is enabled. */
     public Color ambientLight = new Color(0.01f, 0.01f, 0.04f, 0.99f);
+    /** AURORA: campaign light mode: 0 = planet (vanilla), 1 = always night, 2 = day/night cycle. Synced with the rules.
+     * — Режим світла кампанії: 0 = як на планеті (ваніль), 1 = завжди ніч, 2 = цикл день/ніч. Синхронізується з правилами. */
+    public int dayNightMode = 0;
     /** team of the player by default. */
     public Team defaultTeam = Team.sharded;
     /** team of the enemy in waves/sectors. */

@@ -9,13 +9,13 @@ import mindustry.gen.*;
 import mindustry.ui.*;
 
 /**
- * Planet settings for the planet host: who may join, address for friends, password, who is playing now.
- * — Налаштування планети для хоста планети: хто може зайти, адреса для друзів, пароль, хто зараз грає.
+ * Planet settings for the planet host: address for friends, password, who is playing now.
+ * — Налаштування планети для хоста планети: адреса для друзів, пароль, хто зараз грає.
  */
 public class AuroraHostDialog extends BaseDialog{
 
     public AuroraHostDialog(){
-        super("Aurora: планета");
+        super(AuroraNet.tr("host.title"));
         addCloseButton();
         shown(this::rebuild);
     }
@@ -31,31 +31,14 @@ public class AuroraHostDialog extends BaseDialog{
 
             // Status — Стан
             t.add("Authority:");
-            t.label(() -> !AuroraAuthority.running() ? "[scarlet]не запущений" :
-                AuroraAuthority.scope() == AuroraAuthority.SCOPE_LOCAL ? "[accent]лише цей ПК" :
-                AuroraAuthority.scope() == AuroraAuthority.SCOPE_TAILSCALE ? "[green]відкритий для Tailscale" :
-                "[green]відкритий для LAN і Tailscale").row();
-
-            // Access scope — Хто може зайти
-            t.add("Хто може зайти:");
-            t.table(r -> {
-                String[] names = {"Лише я", "LAN + Tailscale", "Лише Tailscale"};
-                ButtonGroup<TextButton> group = new ButtonGroup<>();
-                for(int i = 0; i < names.length; i++){
-                    int s = i;
-                    r.button(names[i], Styles.flatTogglet, () -> {
-                        AuroraAuthority.setScope(s);
-                        if(s != AuroraAuthority.SCOPE_LOCAL && !AuroraAuthority.running()) AuroraAuthority.start();
-                    }).group(group).checked(b -> AuroraAuthority.scope() == s).size(150f, 44f).pad(2f);
-                }
-            }).row();
-            t.add("[lightgray]З інтернету (публічні IP) Authority не пускає ніколи,\n[lightgray]навіть якщо порт 8443 відкритий на роутері.").colspan(2).row();
+            // Access is always this PC + LAN + Tailscale (see AuroraAuthority.allowed) — Доступ завжди цей ПК + LAN + Tailscale (див. AuroraAuthority.allowed)
+            t.label(() -> !AuroraAuthority.running() ? AuroraNet.tr("host.stopped") : AuroraNet.tr("host.running")).row();
 
             separator(t);
 
             // Address for friends — Адреса для друзів
             String addr = AuroraNet.myIp() + ":" + AuroraNet.myPort();
-            t.add("Адреса для друзів:");
+            t.add(AuroraNet.tr("host.address"));
             t.table(r -> {
                 r.add("[accent]" + addr).padRight(8f);
                 r.button(Icon.copySmall, Styles.clearNonei, () -> {
@@ -63,30 +46,47 @@ public class AuroraHostDialog extends BaseDialog{
                     Vars.ui.showInfoFade("@copied");
                 }).size(40f);
             }).row();
-            t.add("[lightgray]Друзі: Грати > Приєднатись > ця адреса.").colspan(2).row();
-            t.add("Порт Authority:");
+            t.add(AuroraNet.tr("host.address.hint")).colspan(2).row();
+            t.add(AuroraNet.tr("host.port"));
             t.label(() -> AuroraAuthority.port() > 0 ? String.valueOf(AuroraAuthority.port()) : "-").row();
 
             // Password (X-Aurora-Token) — Пароль (X-Aurora-Token)
-            t.add("Пароль (необов'язково):");
+            t.add(AuroraNet.tr("host.password"));
             TextField f = t.field(Core.settings.getString("aurora-token", ""), v -> Core.settings.put("aurora-token", v.trim())).width(260f).get();
             f.setMaxLength(40);
             t.row();
-            t.add("[lightgray]Якщо задано, друзі мають ввести той самий пароль\n[lightgray]у своїх налаштуваннях Aurora.").colspan(2).row();
+            t.add(AuroraNet.tr("host.password.hint")).colspan(2).row();
 
             separator(t);
 
             // Live stats — Жива статистика
-            t.add("Зараз грають у секторах:");
+            t.add(AuroraNet.tr("host.live"));
             t.label(() -> String.valueOf(AuroraAuthority.liveCount())).row();
             t.label(() -> {
                 var list = AuroraAuthority.liveList();
-                return list.isEmpty() ? "[lightgray]нікого" : "[lightgray]" + String.join("\n", list);
+                return list.isEmpty() ? AuroraNet.tr("nobody") : "[lightgray]" + String.join("\n", list);
             }).colspan(2).left().row();
-            t.add("Збережених секторів:");
+            t.add(AuroraNet.tr("host.saved"));
             t.label(() -> String.valueOf(AuroraAuthority.savedCount())).row();
-            t.add("Спільних досліджень:");
+            t.add(AuroraNet.tr("host.research"));
             t.label(() -> String.valueOf(AuroraAuthority.unlockCount())).row();
+
+            separator(t);
+
+            // Planet bans: only the planet host bans (from the player list), unban here — Блоки на планеті: банить лише хост планети (зі списку гравців), розблоковувати тут
+            var bans = AuroraAuthority.banList();
+            t.add(AuroraNet.tr("host.bans")).colspan(2).row();
+            if(bans.isEmpty()){
+                t.add(AuroraNet.tr("nobody")).colspan(2).row();
+            }else{
+                bans.forEach((uuid, v) -> {
+                    t.add("[lightgray]" + (v[1].isEmpty() ? uuid : v[1]) + (v[0].isEmpty() ? "" : "  " + v[0]));
+                    t.button(AuroraNet.tr("unban"), Styles.flatt, () -> {
+                        AuroraAuthority.unban(uuid);
+                        rebuild();
+                    }).size(160f, 40f).row();
+                });
+            }
         }).width(Math.min(Core.graphics.getWidth() / Scl.scl(1f) - 40f, 560f));
     }
 }

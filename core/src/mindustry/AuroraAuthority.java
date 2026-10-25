@@ -4,7 +4,7 @@ import arc.*;
 import arc.files.*;
 import arc.util.*;
 import arc.util.serialization.*;
-import com.sun.net.httpserver.*;
+import arc.net.*;
 
 import java.io.*;
 import java.net.*;
@@ -13,9 +13,10 @@ import java.util.*;
 import java.util.concurrent.*;
 
 /**
- * Built-in Authority: the "brain" of a shared Aurora planet, a plain HTTP server inside the planet host's game.
+ * Built-in Authority: the "brain" of a shared Aurora planet, an ArcNet (TCP) server inside the planet host's game.
+ * A request is method, path, token, protocol and body; the answer is a code and a body (see AuroraWire).
  * Keeps who hosts which sector, sector saves, shared research and the shared item stock.
- * — Вбудований Authority: "мозок" спільної планети Aurora, простий HTTP-сервер у грі хоста планети.
+ * — Вбудований Authority: "мозок" спільної планети Aurora, сервер ArcNet (TCP) у грі хоста планети.
  * Тримає, хто хостить який сектор, сейви секторів, спільні дослідження і спільний склад.
  */
 public class AuroraAuthority {
@@ -42,6 +43,8 @@ public class AuroraAuthority {
         final long lastSeen;
         /** True after the first heartbeat: the host is already listening — true після першого heartbeat: хост уже слухає порт. */
         final boolean ready;
+        /** Display name and the real address the claim came from (for bans) — Ім'я і справжня адреса, з якої прийшов claim (для банів). */
+        String name = "", addr = "";
 
         Host(String ip, int port, String player, long lastSeen, boolean ready) {
             this.ip = ip;
@@ -49,6 +52,12 @@ public class AuroraAuthority {
             this.player = player;
             this.lastSeen = lastSeen;
             this.ready = ready;
+        }
+
+        Host with(String name, String addr) {
+            this.name = name == null ? "" : name;
+            this.addr = addr == null ? "" : addr;
+            return this;
         }
 
         int stateAt(long now) {
@@ -67,7 +76,7 @@ public class AuroraAuthority {
         }
 
         Host beat(long now) {
-            return new Host(ip, port, player, now, true);
+            return new Host(ip, port, player, now, true).with(name, addr);
         }
 
         /** Player UUID is never sent: it is the player's "key" to the sector — UUID гравця не віддаємо: це його "ключ" до сектора. */
@@ -77,7 +86,11 @@ public class AuroraAuthority {
         }
     }
 
-    static HttpServer server;
+    static Server server;
+    static int boundPort = -1;
+    /** Request handlers run here, never on ArcNet's update thread — Обробники запитів працюють тут, ніколи не в потоці оновлення ArcNet. */
+    static ThreadPoolExecutor pool;
+    static ScheduledExecutorService sweeper;
     static final ConcurrentHashMap<String, Host> hosts = new ConcurrentHashMap<>();
     static final ConcurrentHashMap<String, byte[]> saves = new ConcurrentHashMap<>();
     static final ConcurrentHashMap<String, String> infos = new ConcurrentHashMap<>();
@@ -92,30 +105,10 @@ public class AuroraAuthority {
     }
 
     public static int port() {
-        return server == null ? -1 : server.getAddress().getPort();
+        return server == null ? -1 : boundPort;
     }
 
-    // ---------- Access scope — Хто може зайти ----------
-
-    public static final int SCOPE_LOCAL = 0, SCOPE_LAN = 1, SCOPE_TAILSCALE = 2;
-
-    /**
-     * 0 this PC only, 1 LAN + Tailscale (default), 2 Tailscale only. The internet never.
-     * — 0 лише цей ПК, 1 LAN + Tailscale (за замовчуванням), 2 лише Tailscale. Інтернет — ніколи.
-     */
-    public static int scope() {
-        int def = Core.settings.getBool("aurora-public", true) ? SCOPE_LAN : SCOPE_LOCAL; // old setting — старе налаштування
-        return Core.settings.getInt("aurora-scope", def);
-    }
-
-    public static void setScope(int s) {
-        Core.settings.put("aurora-scope", s);
-    }
-
-    /** Is the planet open to other players — Чи відкрита планета для інших. */
-    public static boolean isPublic() {
-        return scope() != SCOPE_LOCAL;
-    }
+    // ---------- Who may connect: this PC, LAN, Tailscale; never the internet — Хто може підключитись: цей ПК, LAN, Tailscale; інтернет — ніколи ----------
 
     /** Tailscale: 100.64.0.0/10 and fd7a:115c:a1e0::/48 — Tailscale: 100.64.0.0/10 і fd7a:115c:a1e0::/48. */
     static boolean isTailscale(InetAddress a) {
@@ -147,11 +140,7 @@ public class AuroraAuthority {
                 }
             }
         }
-        switch (scope()) {
-            case SCOPE_LAN: return isLan(a) || isTailscale(a);
-            case SCOPE_TAILSCALE: return isTailscale(a);
-            default: return false;
-        }
+        return isLan(a) || isTailscale(a);
     }
 
     // ---------- Stats for the host dialog — Статистика для вікна хоста ----------
@@ -194,15 +183,91 @@ public class AuroraAuthority {
         try {
             int port = Core.settings.getInt("aurora-port", 8443);
             load();
+            ownerUuid = Vars.platform.getUUID();
 
-            HttpServer s = HttpServer.create(new InetSocketAddress(Core.settings.getString("aurora-bind", "0.0.0.0"), port), 0);
-            s.createContext("/", AuroraAuthority::handle);
-            s.setExecutor(Executors.newFixedThreadPool(4, r -> {
+            Server s = new Server(AuroraWire.WRITE_BUF, AuroraWire.OBJ_BUF, new AuroraWire.Serializer());
+            // Scope check already at connect time; handle() checks it again per request — Перевірка доступу вже при підключенні; handle() перевіряє ще раз на кожен запит
+            s.setConnectFilter(addr -> {
+                try {
+                    return allowed(InetAddress.getByName(addr));
+                } catch (Exception e) {
+                    return false;
+                }
+            });
+            // 16 threads that really start (with a queue, a pool only grows past core size when the queue is full);
+            // idle ones stop after 30 s — 16 потоків, які справді запускаються (з чергою пул росте понад core лише коли черга повна);
+            // бездіяльні зупиняються через 30 с
+            ThreadPoolExecutor exec = new ThreadPoolExecutor(16, 16, 30, TimeUnit.SECONDS, new LinkedBlockingQueue<>(512), r -> {
                 Thread t = new Thread(r, "aurora-authority");
                 t.setDaemon(true);
                 return t;
-            }));
-            s.start();
+            });
+            exec.allowCoreThreadTimeOut(true);
+            s.addListener(new NetListener() {
+                @Override
+                public void connected(Connection c) {
+                    // Few links per address: a game needs one — Мало з'єднань з однієї адреси: грі потрібне одне
+                    String ip = ipOf(c);
+                    connIp.put(c, ip);
+                    int n = linksPerIp.computeIfAbsent(ip, k -> new java.util.concurrent.atomic.AtomicInteger()).incrementAndGet();
+                    c.setArbitraryData(new AuroraWire.Assembler(MAX_BODY + 4096));
+                    if (!isLoopback(ip) && (n > MAX_LINKS_PER_IP || totalLinks() > MAX_LINKS)) {
+                        Log.warn("Aurora Authority: too many links from @, closing", ip);
+                        c.close(DcReason.closed);
+                    }
+                }
+
+                @Override
+                public void disconnected(Connection c, DcReason reason) {
+                    // The address is gone after disconnect, use the one saved at connect — Після відключення адреси вже нема, беремо збережену при підключенні
+                    String ip = connIp.remove(c);
+                    if (ip == null) return;
+                    var n = linksPerIp.get(ip);
+                    if (n != null && n.decrementAndGet() <= 0) linksPerIp.remove(ip, n);
+                }
+
+                @Override
+                public void received(Connection c, Object o) {
+                    if (!(o instanceof AuroraWire.Frame f) || f.kind != AuroraWire.REQ) return;
+                    byte[] full;
+                    try {
+                        full = ((AuroraWire.Assembler) c.getArbitraryData()).add(f);
+                    } catch (IOException e) {
+                        Log.warn("Aurora Authority: dropping @ (@)", c, e.getMessage());
+                        c.close(DcReason.error);
+                        return;
+                    }
+                    if (full == null) return;
+                    // Too many requests from this address: 429 right here, no work done — Забагато запитів з цієї адреси: 429 одразу, без роботи
+                    if (!allowRate(ipOf(c))) {
+                        try {
+                            AuroraWire.send(c, AuroraWire.RESP, f.id, AuroraWire.encodeResp(429, new byte[0]));
+                        } catch (IOException ignored) {
+                        }
+                        return;
+                    }
+                    try {
+                        exec.execute(() -> serve(c, f.id, full));
+                    } catch (RejectedExecutionException e) {
+                        c.close(DcReason.error); // overloaded — перевантажено
+                    }
+                }
+            });
+            s.bind(new InetSocketAddress(Core.settings.getString("aurora-bind", "0.0.0.0"), port), null);
+            Thread loop = new Thread(s, "aurora-authority-net");
+            loop.setDaemon(true);
+            loop.start();
+            ScheduledExecutorService sw = Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "aurora-authority-waits");
+                t.setDaemon(true);
+                return t;
+            });
+            sw.scheduleAtFixedRate(AuroraAuthority::expireWaiters, 1, 1, TimeUnit.SECONDS);
+            // Offline production, like vanilla: every PRODUCE_SECONDS, on the main thread (JsonIO) — Виробництво без гравців, як у ванілі: кожні PRODUCE_SECONDS, в головному потоці (JsonIO)
+            sw.scheduleAtFixedRate(() -> Core.app.post(() -> produce(PRODUCE_SECONDS)), (long) PRODUCE_SECONDS, (long) PRODUCE_SECONDS, TimeUnit.SECONDS);
+            pool = exec;
+            sweeper = sw;
+            boundPort = port;
             server = s;
             // The friend's Authority URL is not touched: AuroraNet.authority() uses 127.0.0.1 on our own planet
             // — Адресу Authority друга не чіпаємо: AuroraNet.authority() на своїй планеті сам бере 127.0.0.1
@@ -218,10 +283,29 @@ public class AuroraAuthority {
 
     public static synchronized void stop() {
         if (server == null) return;
-        server.stop(0);
+        try {
+            flushProduction();
+        } catch (Throwable e) {
+            Log.err("Aurora production flush failed", e);
+        }
+        try {
+            server.stop();
+            server.dispose();
+        } catch (Throwable ignored) {
+        }
         server = null;
+        boundPort = -1;
+        if (pool != null) pool.shutdownNow();
+        if (sweeper != null) sweeper.shutdownNow();
+        pool = null;
+        sweeper = null;
+        for (List<Waiter> l : waiters.values()) for (Waiter w : l) w.ex.finish(503, new byte[0]);
+        waiters.clear();
         AuroraNet.localAuthority = false;
         hosts.clear();
+        linksPerIp.clear();
+        connIp.clear();
+        buckets.clear();
     }
 
     // ---------- Disk — Диск ----------
@@ -232,6 +316,11 @@ public class AuroraAuthority {
             if (!d.exists()) return;
             for (Fi f : d.list()) {
                 String n = f.name();
+                // Leftover of a write interrupted by a crash — Залишок запису, перерваного падінням
+                if (n.endsWith(".tmp")) {
+                    f.delete();
+                    continue;
+                }
                 if (n.endsWith(".msav")) saves.put(n.substring(0, n.length() - 5), f.readBytes());
                 else if (n.endsWith(".info")) putInfo(n.substring(0, n.length() - 5), f.readString());
             }
@@ -242,6 +331,7 @@ public class AuroraAuthority {
                 }
             }
             loadEconomy();
+            loadBans();
         } catch (Throwable e) {
             Log.err("Aurora Authority load failed", e);
         }
@@ -262,11 +352,11 @@ public class AuroraAuthority {
         infoBits.put(id, bits);
     }
 
-    static void saveUnlocks() {
+    static synchronized void saveUnlocks() {
         try {
             StringBuilder sb = new StringBuilder();
             for (String s : unlocked) sb.append(s).append('\n');
-            dir().child("unlocked.txt").writeString(sb.toString());
+            writeAtomic(dir().child("unlocked.txt"), sb.toString());
         } catch (Throwable e) {
             Log.err(e);
         }
@@ -318,6 +408,35 @@ public class AuroraAuthority {
         return m;
     }
 
+    // ---------- Stock sanity — Перевірка складу ----------
+
+    /** No core holds more than this per item (nucleus + many vaults is far below) — Жодне ядро не тримає більше на один предмет (ядро + багато сховищ — значно менше). */
+    static final int STORAGE_MAX = 200_000;
+
+    /** Core capacity of a sector from its last info, bounded; STORAGE_MAX if unknown — Місткість ядра сектора з останнього info, з межею; STORAGE_MAX, якщо невідомо. */
+    static int capacityOf(String id) {
+        String js = infos.get(id);
+        if (js == null) return STORAGE_MAX;
+        try {
+            int c = new JsonReader().parse(js).getInt("storageCapacity", STORAGE_MAX);
+            return c <= 0 ? STORAGE_MAX : Math.min(c, STORAGE_MAX);
+        } catch (Throwable e) {
+            return STORAGE_MAX;
+        }
+    }
+
+    /** A sector host's reported stock, made sane: only real items, 0..core capacity. Silent — Склад, який повідомив хост сектора, приведений до норми: лише справжні предмети, 0..місткість ядра. Мовчки. */
+    static Map<String, Integer> sanitizeStock(String id, Map<String, Integer> in) {
+        int cap = capacityOf(id);
+        Map<String, Integer> out = new ConcurrentHashMap<>();
+        for (Map.Entry<String, Integer> e : in.entrySet()) {
+            if (Vars.content.item(e.getKey()) == null) continue;
+            int v = Math.max(0, Math.min(cap, e.getValue()));
+            if (v > 0) out.put(e.getKey(), v);
+        }
+        return out;
+    }
+
     static synchronized void saveEconomy() {
         try {
             StringBuilder sb = new StringBuilder("{\"stock\":{");
@@ -337,32 +456,37 @@ public class AuroraAuthority {
             }
             sb.append("}}");
             // Temp file first, then replace: a crash never leaves a cut JSON — Спершу тимчасовий файл, потім заміна: краш не лишить обрізаний JSON
-            Fi tmp = dir().child("economy.json.tmp");
-            tmp.writeString(sb.toString());
-            tmp.moveTo(dir().child("economy.json"));
+            writeAtomic(dir().child("economy.json"), sb.toString());
         } catch (Throwable e) {
             Log.err("Aurora economy save failed", e);
         }
     }
 
-    // ---------- HTTP ----------
+    // ---------- Requests — Запити ----------
 
-    static void handle(HttpExchange ex) {
+    static void handle(Exchange ex) {
         try {
-            // Who may knock: this PC / LAN+Tailscale / Tailscale only — Хто може стукати: цей ПК / LAN+Tailscale / лише Tailscale
+            // Who may knock: this PC, LAN, Tailscale — Хто може стукати: цей ПК, LAN, Tailscale
             if (!allowed(ex.getRemoteAddress().getAddress())) {
                 send(ex, 403, "");
                 return;
             }
 
+            // Banned on this planet: a clear answer (not a dropped connection), so his game stops at once
+            // — Заблокований на цій планеті: чітка відповідь (а не обірване з'єднання), щоб його гра зупинилась одразу
+            if (bannedIps.contains(plainAddr(ex.getRemoteAddress().getAddress()))) {
+                json(ex, 403, "{\"banned\":true}");
+                return;
+            }
+
             String token = Core.settings.getString("aurora-token", "");
-            if (!token.isEmpty() && !token.equals(ex.getRequestHeaders().getFirst("X-Aurora-Token"))) {
+            if (!token.isEmpty() && !token.equals(ex.req.token)) {
                 send(ex, 401, "");
                 return;
             }
 
             URI uri = ex.getRequestURI();
-            String m = ex.getRequestMethod();
+            String m = ex.req.method;
             String[] p = uri.getPath().split("/");
             boolean get = m.equals("GET");
 
@@ -371,12 +495,17 @@ public class AuroraAuthority {
                 json(ex, 200, "{\"proto\":" + AuroraNet.PROTOCOL + "}");
                 return;
             }
-            if (!String.valueOf(AuroraNet.PROTOCOL).equals(ex.getRequestHeaders().getFirst("X-Aurora-Proto"))) {
+            if (ex.req.proto != AuroraNet.PROTOCOL) {
                 json(ex, 426, "{\"proto\":" + AuroraNet.PROTOCOL + "}");
                 return;
             }
 
             String path = p.length >= 2 ? p[1] : "";
+
+            if (ex.req.body.length > bodyLimit(uri.getPath())) {
+                send(ex, 413, ""); // too large for this request — завелике для цього запиту
+                return;
+            }
 
             if (get && p.length == 2 && path.equals("unlocks")) {
                 // {"name": "who researched", ...}, "" if unknown — {"назва": "хто дослідив", ...}, "" якщо невідомо
@@ -394,6 +523,11 @@ public class AuroraAuthority {
                 }
                 String by = query(uri, "by");
                 if (by.length() > 40) by = by.substring(0, 40);
+                // Research with a cost opens only through a paid /spend (or from this PC) — Дослідження з ціною відкривається лише через оплачений /spend (або з цього ПК)
+                if (!unlocked.contains(p[2]) && researchCost(p[2]) != null && !fromThisPc(ex)) {
+                    send(ex, 403, "");
+                    return;
+                }
                 if (unlocked.add(p[2])) {
                     if (!by.isEmpty()) unlockedBy.put(p[2], by);
                     saveUnlocks();
@@ -410,9 +544,41 @@ public class AuroraAuthority {
                 });
                 json(ex, 200, sb.append('}').toString());
 
+            } else if (get && p.length == 2 && path.equals("owner")) {
+                // Who the planet host is: uuid + own IPs, so sector hosts can give him admin — Хто хост планети: uuid + власні IP, щоб хости секторів давали йому адмінку
+                StringBuilder sb = new StringBuilder("{\"uuid\":").append(q(ownerUuid)).append(",\"ips\":[");
+                boolean first = true;
+                for (String ip : ownIps()) {
+                    if (!first) sb.append(',');
+                    first = false;
+                    sb.append(q(ip));
+                }
+                json(ex, 200, sb.append("]}").toString());
+
+            } else if (get && p.length == 2 && path.equals("bans")) {
+                StringBuilder sb = new StringBuilder("{\"uuids\":[");
+                boolean first = true;
+                for (String u : bans.keySet()) {
+                    if (!first) sb.append(',');
+                    first = false;
+                    sb.append(q(u));
+                }
+                sb.append("],\"ips\":[");
+                first = true;
+                for (String ip : bannedIps) {
+                    if (!first) sb.append(',');
+                    first = false;
+                    sb.append(q(ip));
+                }
+                json(ex, 200, sb.append("]}").toString());
+
+            } else if (get && p.length == 2 && path.equals("rules")) {
+                // Planet campaign rules set by the planet host: {"serpulo":{...}, ...} — Правила кампанії планети, які задає хост планети
+                json(ex, 200, rulesJson());
+
             } else if (get && p.length == 2 && path.equals("mode")) {
                 // Is the planet host in Aurora right now (not normal campaign / own game) — Чи хост планети зараз в Aurora (а не у звичайній кампанії / своїй грі)
-                json(ex, 200, "{\"active\":" + (Vars.campaignSlot == Vars.slotAurora && isPublic()) + "}");
+                json(ex, 200, "{\"active\":" + (Vars.campaignSlot == Vars.slotAurora) + "}");
 
             } else if (get && p.length == 3 && path.equals("sectors") && p[2].equals("state")) {
                 // {"id": bits}: 1 core, 2 waves still running, 4 attacking an enemy base — 1 ядро, 2 хвилі ще йдуть, 4 атака на ворожу базу
@@ -427,6 +593,8 @@ public class AuroraAuthority {
                 sector(ex, m, p[2], p[3], query(uri, "player"));
 
             } else if (get && p.length == 2 && path.equals("items")) {
+                // ?fresh=1: ask the hosts for their current stock first — ?fresh=1: спершу попросити в хостів поточний склад
+                if (query(uri, "fresh").equals("1")) freshStock();
                 // Shared stock = sum of all sectors minus pending ops — Спільний склад = сума всіх секторів мінус ще не застосовані списання
                 Map<String, Integer> sum = new TreeMap<>();
                 stock.forEach((sec, items) -> {
@@ -452,14 +620,342 @@ public class AuroraAuthority {
         }
     }
 
+    // ---------- Offline production — Виробництво без гравців ----------
+
+    /** Production step: small, so the shared stock grows smoothly; disk writes are batched (DISK_EVERY_MS)
+     * — Крок виробництва: малий, щоб спільний склад ріс плавно; запис на диск — пачками (DISK_EVERY_MS). */
+    static final float PRODUCE_SECONDS = 5f;
+    static final long DISK_EVERY_MS = 60_000L;
+    static final Set<String> produceDirty = new HashSet<>();
+    static long lastProduceDisk;
+    /** Fractions below one item carried to the next tick: "sector/item" -> rest — Дробові залишки до наступного тіку: "сектор/предмет" -> залишок. */
+    static final Map<String, Float> produceRest = new HashMap<>();
+
+    /**
+     * Sectors nobody plays keep producing like in the vanilla campaign: net production (info.production) x time x (1 - damage),
+     * capped by core capacity. Goes into the sector info (core items when someone loads it) and into the shared stock.
+     * Time passes only while this Authority runs. Main thread only.
+     * — Сектори, де ніхто не грає, виробляють як у ванільній кампанії: чисте виробництво (info.production) x час x (1 - пошкодження),
+     * не більше місткості ядра. Йде в info сектора (предмети ядра, коли хтось його завантажить) і в спільний склад.
+     * Час іде лише поки працює цей Authority. Лише головний потік.
+     */
+    static void produce(float secs) {
+        if (server == null) return;
+        long now = System.currentTimeMillis();
+        boolean any = false;
+        for (String id : new ArrayList<>(infos.keySet())) {
+            Host h = hosts.get(id);
+            if (h != null && h.alive(now)) continue; // someone plays: his core counts itself — хтось грає: його ядро рахує саме
+            String js = infos.get(id);
+            if (js == null) continue;
+            try {
+                mindustry.game.SectorInfo si = mindustry.io.JsonIO.json.fromJson(mindustry.game.SectorInfo.class, js);
+                if (si == null || !si.hasCore || si.production == null || si.production.isEmpty()) continue;
+                float scl = Math.max(1f - si.damage, 0f);
+                int cap = Math.min(si.storageCapacity, STORAGE_MAX);
+                Map<String, Integer> st = stock.computeIfAbsent(id, k -> new ConcurrentHashMap<>());
+                boolean changed = false;
+                for (var e : si.production) {
+                    mindustry.type.Item item = e.key;
+                    if (item == null || e.value == null || e.value.mean == 0f) continue;
+                    String key = id + "/" + item.name;
+                    float amount = e.value.mean * secs * scl + produceRest.getOrDefault(key, 0f);
+                    int whole = (int) amount;
+                    produceRest.put(key, amount - whole);
+                    if (whole == 0) continue;
+                    int have = si.items.get(item);
+                    int add = Math.max(Math.min(whole, cap - have), -have);
+                    if (add == 0) continue;
+                    si.items.add(item, add);
+                    int s = st.getOrDefault(item.name, 0);
+                    st.put(item.name, Math.max(0, Math.min(cap, s + add)));
+                    changed = true;
+                }
+                if (!changed) continue;
+                String out = mindustry.io.JsonIO.json.toJson(si);
+                // Only if the host did not push a newer info meanwhile — Лише якщо хост тим часом не відправив новіше info
+                if (!infos.replace(id, js, out)) continue;
+                putInfo(id, out);
+                produceDirty.add(id);
+                any = true;
+            } catch (Throwable e) {
+                Log.err("Aurora production failed for " + id, e);
+            }
+        }
+        if (any) {
+            synchronized (stockLock) {
+                stockLock.notifyAll(); // /items?fresh=1 waiting — хтось чекає /items?fresh=1
+            }
+        }
+        if (now - lastProduceDisk >= DISK_EVERY_MS) flushProduction();
+    }
+
+    /** Writes produced sector infos and the stock to disk. Main thread — Пише вироблене (info секторів і склад) на диск. Головний потік. */
+    static void flushProduction() {
+        lastProduceDisk = System.currentTimeMillis();
+        if (produceDirty.isEmpty()) return;
+        for (String id : produceDirty) {
+            String s = infos.get(id);
+            if (s == null) continue;
+            try {
+                writeAtomic(dir().child(id + ".info"), s);
+            } catch (IOException e) {
+                Log.err("Aurora production: writing " + id + ".info failed", e);
+            }
+        }
+        produceDirty.clear();
+        saveEconomy();
+    }
+
+    // ---------- Planet bans — Блокування на планеті ----------
+
+    /** uuid -> {ip, name} */
+    static final Map<String, String[]> bans = new ConcurrentHashMap<>();
+    static final Set<String> bannedIps = ConcurrentHashMap.newKeySet();
+    /** Planet host's player uuid (never banned) — uuid гравця-хоста планети (його не можна заблокувати). */
+    static volatile String ownerUuid = "";
+
+    static void loadBans() {
+        Fi f = dir().child("bans.txt");
+        if (!f.exists()) return;
+        for (String line : f.readString().split("\n")) {
+            String[] c = line.split("\t", -1);
+            if (c.length < 3 || c[0].isEmpty()) continue;
+            bans.put(c[0], new String[]{c[1], c[2]});
+            if (!c[1].isEmpty()) bannedIps.add(c[1]);
+        }
+    }
+
+    static synchronized void saveBans() {
+        try {
+            StringBuilder sb = new StringBuilder();
+            bans.forEach((u, v) -> sb.append(u).append('\t').append(v[0]).append('\t').append(v[1].replace('\t', ' ').replace('\n', ' ')).append('\n'));
+            writeAtomic(dir().child("bans.txt"), sb.toString());
+        } catch (Throwable e) {
+            Log.err("Aurora bans save failed", e);
+        }
+    }
+
+    /** IPv4 text even for IPv4-mapped IPv6 — Текст IPv4 навіть для IPv4, загорнутої в IPv6. */
+    static String plainAddr(InetAddress a) {
+        String s = a.getHostAddress();
+        return s.startsWith("::ffff:") ? s.substring(7) : s;
+    }
+
+    /**
+     * Planet host abandons a sector nobody plays: its save, info and stock are gone, the sector is free again.
+     * False if someone plays it now. — Власник планети покидає сектор, де ніхто не грає: сейв, info і склад видаляються, сектор знову вільний.
+     * false, якщо там зараз хтось грає.
+     */
+    public static boolean abandon(String id) {
+        Host h = hosts.get(id);
+        if (h != null && h.alive(System.currentTimeMillis())) return false;
+        hosts.remove(id);
+        saves.remove(id);
+        infos.remove(id);
+        infoBits.remove(id);
+        stock.remove(id);
+        pending.remove(id);
+        sectorPlayers.remove(id);
+        try {
+            dir().child(id + ".msav").delete();
+            dir().child(id + ".info").delete();
+        } catch (Throwable e) {
+            Log.err("Aurora abandon: file delete failed", e);
+        }
+        saveEconomy();
+        Log.info("Aurora: sector @ abandoned by the planet host", id);
+        return true;
+    }
+
+    /** Frees his sectors right away (no waiting for timeouts) — Звільняє його сектори одразу (без очікування таймаутів). */
+    static void dropHost(String uuid, String ip) {
+        hosts.forEach((id, h) -> {
+            if (h.player.equals(uuid) || (ip != null && !ip.isEmpty() && ip.equals(h.addr))) {
+                if (hosts.remove(id, h)) {
+                    sectorPlayers.remove(id);
+                    Log.info("Aurora: sector @ freed (host removed by the planet host)", id);
+                }
+            }
+        });
+    }
+
+    /** Bans a player on the whole planet: uuid + IP — Блокує гравця на всій планеті: uuid + IP. */
+    public static void ban(String uuid, String ip, String name, String why) {
+        if (uuid == null || uuid.isEmpty() || uuid.equals(ownerUuid)) return;
+        if (ip == null) ip = "";
+        bans.put(uuid, new String[]{ip, name == null ? "" : name});
+        if (!ip.isEmpty()) bannedIps.add(ip);
+        saveBans();
+        dropHost(uuid, ip);
+        Log.info("Aurora: banned @ (@) @ by @", name, uuid, ip, why);
+    }
+
+    public static void unban(String uuid) {
+        String[] v = bans.remove(uuid);
+        if (v == null) return;
+        bannedIps.clear();
+        bans.values().forEach(b -> {
+            if (!b[0].isEmpty()) bannedIps.add(b[0]);
+        });
+        saveBans();
+        Log.info("Aurora: unbanned @ (@)", v[1], uuid);
+    }
+
+    /** Players of each live sector, reported by its host: sector -> [{uuid, ip, name}] — Гравці кожного живого сектора від його хоста. */
+    static final ConcurrentHashMap<String, List<String[]>> sectorPlayers = new ConcurrentHashMap<>();
+    /** Kicked by the planet host: uuid -> may come back at (ms) — Видалені хостом планети: uuid -> коли можна повернутись (мс). */
+    static final ConcurrentHashMap<String, Long> kickedUntil = new ConcurrentHashMap<>();
+    static final long KICK_MS = 60_000L;
+
+    static String cut(String s) {
+        return s == null ? "" : s.length() > 40 ? s.substring(0, 40) : s;
+    }
+
+    /** Banned or kicked less than a minute ago — Заблокований або видалений менше хвилини тому. */
+    static boolean removed(String uuid) {
+        if (uuid == null || uuid.isEmpty() || uuid.equals(ownerUuid)) return false;
+        if (bans.containsKey(uuid)) return true;
+        Long t = kickedUntil.get(uuid);
+        return t != null && t > System.currentTimeMillis();
+    }
+
+    /** {"banned":true} or {"kicked":seconds left} — {"banned":true} або {"kicked":скільки секунд лишилось}. */
+    static String removedJson(String uuid) {
+        if (bans.containsKey(uuid)) return "{\"banned\":true}";
+        Long t = kickedUntil.get(uuid);
+        long left = t == null ? 0 : Math.max(1, (t - System.currentTimeMillis() + 999) / 1000);
+        return "{\"kicked\":" + left + "}";
+    }
+
+    /** Kick from the planet: out of his sector (hosts too), no re-entry for a minute — Видалити з планети: геть із сектора (хостів теж), без повернення хвилину. */
+    public static void kick(String uuid) {
+        if (uuid == null || uuid.isEmpty() || uuid.equals(ownerUuid)) return;
+        kickedUntil.put(uuid, System.currentTimeMillis() + KICK_MS);
+        dropHost(uuid, null);
+        Log.info("Aurora: kicked @ from the planet", shortId(uuid));
+    }
+
+    /**
+     * Planet host, as a client in someone's sector, removes a player he sees there. Only the planet host's own game calls this
+     * (in-process, never over the network), so nobody else can ban. The player is found by his entity id in that sector,
+     * from the sector host's last heartbeat. Returns his name, or null if Authority does not know him yet (joined < 10 s ago).
+     * — Власник планети, будучи клієнтом у чужому секторі, видаляє гравця, якого там бачить. Викликає лише гра власника
+     * (в тому ж процесі, ніколи через мережу), тож ніхто інший банити не може. Гравця шукаємо за id сутності в тому секторі,
+     * з останнього heartbeat хоста. Повертає ім'я, або null, якщо Authority його ще не знає (зайшов < 10 с тому).
+     */
+    public static String removeInSector(String sector, int pid, boolean ban) {
+        for (String[] c : sectorPlayers.getOrDefault(sector, Collections.emptyList())) {
+            if (c.length < 4 || !c[3].equals(String.valueOf(pid))) continue;
+            if (c[0].equals(ownerUuid)) return null;
+            String ip = c[1];
+            Host h = hosts.get(sector);
+            if (ip.isEmpty() && h != null && h.player.equals(c[0])) ip = h.addr; // the sector host himself — сам хост сектора
+            if (ban) ban(c[0], ip, c[2], "planet host (in sector)");
+            else kick(c[0]);
+            return c[2].isEmpty() ? shortId(c[0]) : c[2];
+        }
+        return null;
+    }
+
+    /** One player on the planet for the owner's list — Один гравець на планеті для списку власника. */
+    public static class PlanetPlayer {
+        public String sector, uuid, name, ip;
+        public boolean host;
+    }
+
+    /** Everyone in live sectors: hosts and the players they report — Усі в живих секторах: хости і гравці, яких вони повідомили. */
+    public static List<PlanetPlayer> players() {
+        long now = System.currentTimeMillis();
+        List<PlanetPlayer> out = new ArrayList<>();
+        hosts.forEach((id, h) -> {
+            if (!h.alive(now)) return;
+            PlanetPlayer p = new PlanetPlayer();
+            p.sector = id;
+            p.uuid = h.player;
+            p.name = h.name.isEmpty() ? shortId(h.player) : h.name;
+            p.ip = h.addr.isEmpty() ? h.ip : h.addr;
+            p.host = true;
+            out.add(p);
+            for (String[] c : sectorPlayers.getOrDefault(id, Collections.emptyList())) {
+                if (c[0].equals(h.player)) continue;
+                PlanetPlayer q = new PlanetPlayer();
+                q.sector = id;
+                q.uuid = c[0];
+                q.name = c[2].isEmpty() ? shortId(c[0]) : c[2];
+                q.ip = c[1];
+                out.add(q);
+            }
+        });
+        out.sort(Comparator.comparing((PlanetPlayer p) -> p.sector).thenComparing(p -> !p.host).thenComparing(p -> p.name));
+        return out;
+    }
+
+    public static boolean isOwner(String uuid) {
+        return uuid != null && uuid.equals(ownerUuid);
+    }
+
+    /** For the host dialog: uuid -> {ip, name} — Для вікна хоста: uuid -> {ip, ім'я}. */
+    public static Map<String, String[]> banList() {
+        return new TreeMap<>(bans);
+    }
+
+    /** IPv4 addresses of this PC (LAN, Tailscale) — IPv4-адреси цього ПК (LAN, Tailscale). */
+    static List<String> ownIps() {
+        List<String> out = new ArrayList<>();
+        try {
+            for (NetworkInterface n : Collections.list(NetworkInterface.getNetworkInterfaces())) {
+                if (!n.isUp()) continue;
+                for (InetAddress a : Collections.list(n.getInetAddresses())) {
+                    if (a instanceof Inet4Address && !a.isLoopbackAddress()) out.add(a.getHostAddress());
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return out;
+    }
+
+    /** Own Json: JsonIO.json is shared with the main thread and not thread-safe — Свій Json: JsonIO.json спільний з головним потоком і не потокобезпечний. */
+    static final arc.util.serialization.Json rulesJsonWriter = new arc.util.serialization.Json(arc.util.serialization.JsonWriter.OutputType.json);
+
+    /** Campaign rules of every planet from the host's own Aurora rules (c2- keys), difficulty clamped to Eradication+
+     * — Правила кампанії кожної планети з власних правил Aurora хоста (ключі c2-), складність не нижче Викорінювальної. */
+    static synchronized String rulesJson() {
+        StringBuilder sb = new StringBuilder("{");
+        for (mindustry.type.Planet pl : Vars.content.planets()) {
+            if (pl.sectors.isEmpty() || !pl.allowCampaignRules) continue;
+            mindustry.game.CampaignRules r = null;
+            try {
+                r = Core.settings.getJson("c2-" + pl.name + "-campaign-rules", mindustry.game.CampaignRules.class, () -> null);
+            } catch (Throwable ignored) {
+            }
+            if (r == null) {
+                r = new mindustry.game.CampaignRules();
+                pl.applyDefaultRules(r);
+            }
+            if (r.difficulty == null || r.difficulty.ordinal() < mindustry.game.Difficulty.eradication.ordinal()) r.difficulty = mindustry.game.Difficulty.eradication;
+            if (sb.length() > 1) sb.append(',');
+            sb.append(q(pl.name)).append(':').append(rulesJsonWriter.toJson(r, mindustry.game.CampaignRules.class));
+        }
+        return sb.append('}').toString();
+    }
+
     /** /sector/{id}/{action} */
-    static void sector(HttpExchange ex, String m, String id, String action, String player) throws Exception {
-        boolean get = m.equals("GET"), post = m.equals("POST"), put = m.equals("PUT");
+    static void sector(Exchange ex, String m, String id, String action, String player) throws Exception {
+        boolean get = m.equals("GET"), post = m.equals("POST");
 
         if (post && action.equals("claim")) {
             JsonValue j = new JsonReader().parse(new String(readBody(ex), StandardCharsets.UTF_8));
             long now = System.currentTimeMillis();
-            Host mine = new Host(j.getString("ip"), j.getInt("port"), j.getString("player"), now, false);
+            String who = j.getString("player");
+            if (removed(who)) {
+                // Banned, or kicked less than a minute ago: say which — Заблокований або видалений менше хвилини тому: кажемо, що саме
+                json(ex, 403, removedJson(who));
+                return;
+            }
+            String nm = j.getString("name", "");
+            if (nm.length() > 40) nm = nm.substring(0, 40);
+            Host mine = new Host(j.getString("ip"), j.getInt("port"), who, now, false).with(nm, ex.getRemoteAddress().getAddress().getHostAddress());
             Host prev = hosts.get(id);
             // Another player's live host stays; our own old entry or a dead one is replaced — Чужий живий хост лишається; свій старий чи мертвий — замінюємо
             Host cur = hosts.compute(id, (k, old) -> old != null && !old.player.equals(mine.player) && old.alive(now) ? old : mine);
@@ -472,6 +968,24 @@ public class AuroraAuthority {
             else json(ex, 200, "{\"role\":\"wait\",\"state\":" + q(STATE_NAMES[cur.stateAt(now)]) + ",\"retry\":" + cur.secondsToFree(now) + "}");
 
         } else if (post && action.equals("heartbeat")) {
+            // Body (new clients): the sector's players [{uuid, ip, name, pid}], the host himself included — Тіло (нові клієнти): гравці сектора [{uuid, ip, name}]
+            byte[] hb = readBody(ex);
+            if (removed(player)) {
+                hosts.computeIfPresent(id, (k, h) -> h.player.equals(player) ? null : h);
+                sectorPlayers.remove(id);
+                send(ex, 403, ""); // the host himself was removed — видалили самого хоста
+                return;
+            }
+            if (hb.length > 0 && isHost(id, player)) {
+                try {
+                    List<String[]> list = new ArrayList<>();
+                    for (JsonValue c = new JsonReader().parse(new String(hb, StandardCharsets.UTF_8)).child; c != null && list.size() < 64; c = c.next) {
+                        list.add(new String[]{c.getString("uuid", ""), c.getString("ip", ""), cut(c.getString("name", "")), String.valueOf(c.getInt("pid", -1))});
+                    }
+                    sectorPlayers.put(id, list);
+                } catch (Throwable ignored) {
+                }
+            }
             boolean[] ok = {false};
             long now = System.currentTimeMillis();
             hosts.computeIfPresent(id, (k, h) -> {
@@ -481,7 +995,20 @@ public class AuroraAuthority {
             });
             // 404 = you are not the host anymore (Authority restarted or sector taken), claim again
             // — 404 = ти тут більше не хост (Authority перезапустився або сектор забрали), заклейм знову
-            send(ex, ok[0] ? 200 : 404, "");
+            if (!ok[0]) {
+                send(ex, 404, "");
+                return;
+            }
+            // Players of this sector to throw out — Гравці цього сектора, яких треба викинути
+            StringBuilder kb = new StringBuilder("{\"kick\":[");
+            boolean first = true;
+            for (String[] pl : sectorPlayers.getOrDefault(id, Collections.emptyList())) {
+                if (!removed(pl[0]) && !bannedIps.contains(pl[1])) continue;
+                if (!first) kb.append(',');
+                first = false;
+                kb.append(q(pl[0]));
+            }
+            json(ex, 200, kb.append("]}").toString());
 
         } else if (post && action.equals("release")) {
             boolean[] own = {false};
@@ -490,26 +1017,35 @@ public class AuroraAuthority {
                 own[0] = true;
                 return null;
             });
+            if (own[0]) sectorPlayers.remove(id);
             Log.info("Authority release @ by @ -> @", id, shortId(player), own[0] ? "REMOVED" : "ignored");
             send(ex, 200, "");
 
-        } else if (put && action.equals("save")) {
+        } else if (post && action.equals("save")) {
             byte[] b = readBody(ex); // body first, then rights (client gets a clean answer) — спершу тіло, потім права (клієнт отримає чисту відповідь)
             if (denyNonHost(ex, id, player)) return;
             saves.put(id, b);
-            dir().child(id + ".msav").writeBytes(b);
+            writeAtomic(dir().child(id + ".msav"), b);
+            // ?ops=a,b: spends already inside this save, acked together with it (no window where they could come back or be taken twice)
+            // — ?ops=a,b: списання, які вже є в цьому сейві, підтверджуються разом з ним (нема вікна, де вони повернуться або знімуться двічі)
+            String ops = query(ex.getRequestURI(), "ops");
+            if (!ops.isEmpty()) {
+                Set<String> ids = new HashSet<>(Arrays.asList(ops.split(",")));
+                List<Op> list = pending.get(id);
+                if (list != null && list.removeIf(o -> ids.contains(o.id))) saveEconomy();
+            }
             send(ex, 200, "");
 
         } else if (get && action.equals("save")) {
             byte[] b = saves.get(id);
             if (b == null) send(ex, 404, "");
-            else sendBytes(ex, 200, "application/octet-stream", b);
+            else sendBytes(ex, 200, b);
 
-        } else if (put && action.equals("info")) {
+        } else if (post && action.equals("info")) {
             String s = new String(readBody(ex), StandardCharsets.UTF_8);
             if (denyNonHost(ex, id, player)) return;
             putInfo(id, s);
-            dir().child(id + ".info").writeString(s);
+            writeAtomic(dir().child(id + ".info"), s);
             send(ex, 200, "");
 
         } else if (get && action.equals("info")) {
@@ -517,13 +1053,34 @@ public class AuroraAuthority {
             if (s == null) send(ex, 404, "");
             else json(ex, 200, s);
 
-        } else if (put && action.equals("items")) {
+        } else if (post && action.equals("items")) {
             // Host pushes its core stock (every heartbeat) — Хост відправляє склад свого ядра (кожен heartbeat)
             String s = new String(readBody(ex), StandardCharsets.UTF_8);
             if (denyNonHost(ex, id, player)) return;
-            stock.put(id, readCounts(new JsonReader().parse(s)));
+            stock.put(id, sanitizeStock(id, readCounts(new JsonReader().parse(s))));
+            stockTime.put(id, System.currentTimeMillis());
+            synchronized (stockLock) {
+                stockLock.notifyAll();
+            }
             saveEconomy();
             send(ex, 200, "");
+
+        } else if (get && action.equals("wait")) {
+            // Long poll: the host waits here; returns when something needs its stock — Long poll: хост чекає тут; повертається, коли комусь потрібен його склад
+            if (denyNonHost(ex, id, player)) return;
+            long since = Strings.parseLong(query(ex.getRequestURI(), "since"), -1);
+            long[] v = wakeVer.computeIfAbsent(id, k -> new long[1]);
+            synchronized (v) {
+                // Something new already, or Authority restarted (counter below the host's): answer now
+                // — Уже є нове, або Authority перезапустився (лічильник менший за хостовий): відповідаємо зараз
+                if (v[0] != since) {
+                    json(ex, 200, "{\"ver\":" + v[0] + "}");
+                    return;
+                }
+                // Park the request without holding a thread: wake() or the sweeper answers it — Паркуємо запит без зайнятого потоку: відповість wake() або прибиральник
+                ex.deferred = true;
+                waiters.computeIfAbsent(id, k -> new CopyOnWriteArrayList<>()).add(new Waiter(ex, System.currentTimeMillis() + WAIT_MAX));
+            }
 
         } else if (get && action.equals("pending")) {
             // Host takes spend ops queued for its sector — Хост забирає списання, що чекають на його сектор
@@ -544,7 +1101,7 @@ public class AuroraAuthority {
     }
 
     /** 403 if the player is not this sector's host. True = denied — 403, якщо гравець не хост цього сектора. true = відмовлено. */
-    static boolean denyNonHost(HttpExchange ex, String id, String player) throws IOException {
+    static boolean denyNonHost(Exchange ex, String id, String player) throws IOException {
         if (isHost(id, player)) return false;
         send(ex, 403, "");
         return true;
@@ -571,6 +1128,88 @@ public class AuroraAuthority {
 
     static final ConcurrentHashMap<String, Map<String, Integer>> stock = new ConcurrentHashMap<>();
     static final ConcurrentHashMap<String, CopyOnWriteArrayList<Op>> pending = new ConcurrentHashMap<>();
+
+    // ---------- Instant sync (long poll) — Миттєва синхронізація (long poll) ----------
+    /** Per-sector wake counter; a host's /wait returns as soon as it grows — Лічильник пробудження сектора; /wait хоста повертається, щойно він зростає. */
+    static final ConcurrentHashMap<String, long[]> wakeVer = new ConcurrentHashMap<>();
+    /** When each sector last pushed its stock, ms — Коли кожен сектор востаннє відправив склад, мс. */
+    static final ConcurrentHashMap<String, Long> stockTime = new ConcurrentHashMap<>();
+    static final Object stockLock = new Object();
+    /** Max time a host's /wait is held, ms (below the client's 15 s read timeout) — Найдовше утримання /wait хоста, мс (менше за 15 с тайм-аут читання клієнта). */
+    static final long WAIT_MAX = 10000;
+    /** How long /items?fresh=1 waits for hosts to push fresh stock, ms — Скільки /items?fresh=1 чекає, поки хости відправлять свіжий склад, мс. */
+    static final long FRESH_MAX = 1500;
+
+    /** Wake the host of a sector: it will apply pending spends and push its stock now — Розбудити хоста сектора: він одразу застосує списання й відправить склад. */
+    static void wake(String id) {
+        long[] v = wakeVer.computeIfAbsent(id, k -> new long[1]);
+        long ver;
+        List<Waiter> list;
+        synchronized (v) {
+            ver = ++v[0];
+            list = waiters.remove(id);
+        }
+        if (list != null) for (Waiter w : list) w.ex.finish(200, ("{\"ver\":" + ver + "}").getBytes(StandardCharsets.UTF_8));
+    }
+
+    /** A host's parked /wait request — Запарковане /wait хоста. */
+    static final class Waiter {
+        final Exchange ex;
+        final long deadline;
+
+        Waiter(Exchange ex, long deadline) {
+            this.ex = ex;
+            this.deadline = deadline;
+        }
+    }
+
+    static final ConcurrentHashMap<String, CopyOnWriteArrayList<Waiter>> waiters = new ConcurrentHashMap<>();
+
+    /** Every second: answer parked /wait requests older than WAIT_MAX — Щосекунди: відповісти на запарковані /wait, старші за WAIT_MAX. */
+    static void expireWaiters() {
+        try {
+            long now = System.currentTimeMillis();
+            for (Map.Entry<String, CopyOnWriteArrayList<Waiter>> e : waiters.entrySet()) {
+                long[] v = wakeVer.computeIfAbsent(e.getKey(), k -> new long[1]);
+                for (Waiter w : e.getValue()) {
+                    if (w.deadline > now && w.ex.conn.isConnected()) continue;
+                    e.getValue().remove(w);
+                    long ver;
+                    synchronized (v) {
+                        ver = v[0];
+                    }
+                    w.ex.finish(200, ("{\"ver\":" + ver + "}").getBytes(StandardCharsets.UTF_8));
+                }
+            }
+        } catch (Throwable t) {
+            Log.err("Aurora: expireWaiters failed", t);
+        }
+    }
+
+    /** Wake every live host and wait (up to FRESH_MAX) until they all pushed stock — Розбудити всіх живих хостів і почекати (до FRESH_MAX), поки всі відправлять склад. */
+    static void freshStock() throws InterruptedException {
+        long t0 = System.currentTimeMillis(), now = t0;
+        List<String> live = new ArrayList<>();
+        for (Map.Entry<String, Host> e : hosts.entrySet()) {
+            if (e.getValue().alive(now)) live.add(e.getKey());
+        }
+        if (live.isEmpty()) return;
+        for (String id : live) wake(id);
+        synchronized (stockLock) {
+            long left;
+            while ((left = t0 + FRESH_MAX - System.currentTimeMillis()) > 0) {
+                boolean all = true;
+                for (String id : live) {
+                    if (stockTime.getOrDefault(id, 0L) < t0) {
+                        all = false;
+                        break;
+                    }
+                }
+                if (all) return;
+                stockLock.wait(left);
+            }
+        }
+    }
     static final CopyOnWriteArrayList<Op> NONE = new CopyOnWriteArrayList<>();
     /** Handled spend ids (id -> time), so a retried request never spends twice; older than 1 h are dropped
      * — Оброблені списання (id -> час), щоб повтор запиту не списав двічі; старші за годину видаляються. */
@@ -590,9 +1229,14 @@ public class AuroraAuthority {
      * Research payment: all or nothing. 200 = accepted and split across sectors, 409 = not enough.
      * — Оплата дослідження: все або нічого. 200 = прийнято й розкладено по секторах, 409 = не вистачає.
      */
-    static synchronized void spend(HttpExchange ex) throws IOException {
+    static synchronized void spend(Exchange ex) throws IOException {
         JsonValue j = new JsonReader().parse(new String(readBody(ex), StandardCharsets.UTF_8));
-        String opId = j.getString("id");
+        String opId = j.getString("id", "");
+        // A comma or odd chars in the id would make an op that can never be acked — Кома чи дивні символи в id дали б списання, яке ніколи не підтвердиться
+        if (!opId.matches("[A-Za-z0-9\\-]{1,64}")) {
+            send(ex, 400, "");
+            return;
+        }
         long now = System.currentTimeMillis();
         doneOps.values().removeIf(t -> now - t > DONE_OPS_TTL);
         if (doneOps.putIfAbsent(opId, now) != null) { // retry of a handled request — повтор уже обробленого запиту
@@ -603,6 +1247,29 @@ public class AuroraAuthority {
         Map<String, Integer> need = new HashMap<>();
         for (JsonValue c = j.get("items").child; c != null; c = c.next) {
             if (c.asInt() > 0) need.put(c.name, c.asInt());
+        }
+
+        // Paying for research: the spend must cover the node's full cost; it opens right here after payment
+        // — Оплата дослідження: списання має покривати повну ціну вузла; воно відкривається тут же після оплати
+        String research = j.getString("research", "");
+        String by = j.getString("by", "");
+        if (by.length() > 40) by = by.substring(0, 40);
+        if (!research.isEmpty()) {
+            Map<String, Integer> cost = researchCost(research);
+            if (cost == null) {
+                doneOps.remove(opId);
+                send(ex, 400, "");
+                return;
+            }
+            if (!fromThisPc(ex)) {
+                for (Map.Entry<String, Integer> c : cost.entrySet()) {
+                    if (need.getOrDefault(c.getKey(), 0) < c.getValue()) {
+                        doneOps.remove(opId);
+                        send(ex, 400, ""); // pays less than the research costs — платить менше, ніж коштує дослідження
+                        return;
+                    }
+                }
+            }
         }
 
         // Available per item per sector, computed once — Доступно по кожному предмету й сектору, рахуємо один раз
@@ -639,10 +1306,63 @@ public class AuroraAuthority {
             }
         }
         saveEconomy();
+        if (!research.isEmpty() && unlocked.add(research)) {
+            if (!by.isEmpty()) unlockedBy.put(research, by);
+            saveUnlocks();
+        }
+        // Hosts take the spend from their cores right away — Хости одразу знімають списання зі своїх ядер
+        for (Map<String, Integer> per : avail.values()) {
+            for (String sec : per.keySet()) wake(sec);
+        }
         send(ex, 200, "");
     }
 
+    // ---------- Research cost — Ціна досліджень ----------
+
+    static volatile Map<String, Map<String, Integer>> costs;
+
+    /** Full item cost of researching this content, or null if it has none (items, sectors...) — Повна ціна дослідження в предметах, або null, якщо її нема (предмети, сектори...). */
+    static Map<String, Integer> researchCost(String name) {
+        Map<String, Map<String, Integer>> c = costs;
+        if (c == null) {
+            c = new HashMap<>();
+            for (mindustry.content.TechTree.TechNode node : mindustry.content.TechTree.all) {
+                Map<String, Integer> m = new HashMap<>();
+                for (mindustry.type.ItemStack s : node.requirements) if (s.amount > 0) m.merge(s.item.name, s.amount, Integer::sum);
+                if (!m.isEmpty()) c.put(node.content.name, m);
+            }
+            costs = c;
+        }
+        return c.get(name);
+    }
+
+    /** The planet host's own game (loopback) — Власна гра хоста планети (loopback). */
+    static boolean fromThisPc(Exchange ex) {
+        return isLoopback(plainAddr(ex.getRemoteAddress().getAddress()));
+    }
+
     // ---------- Utils — Утиліти ----------
+
+    /**
+     * Write to a temp file, then replace the target in one move: a crash leaves the old file or the new one, never half of one.
+     * — Запис у тимчасовий файл, потім заміна одним переміщенням: падіння лишає старий файл або новий, але ніколи не половину.
+     */
+    static void writeAtomic(Fi target, byte[] data) throws IOException {
+        java.nio.file.Path to = target.file().toPath();
+        java.nio.file.Path tmp = to.resolveSibling(target.name() + "." + Thread.currentThread().getId() + "." + System.nanoTime() + ".tmp");
+        java.nio.file.Files.write(tmp, data);
+        try {
+            java.nio.file.Files.move(tmp, to, java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+        } catch (java.nio.file.AtomicMoveNotSupportedException e) {
+            java.nio.file.Files.move(tmp, to, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        } finally {
+            java.nio.file.Files.deleteIfExists(tmp);
+        }
+    }
+
+    static void writeAtomic(Fi target, String text) throws IOException {
+        writeAtomic(target, text.getBytes(StandardCharsets.UTF_8));
+    }
 
     /** The id goes into a file name, so safe characters only — id іде в назву файла, тож лише безпечні символи. */
     static boolean safe(String id) {
@@ -670,18 +1390,57 @@ public class AuroraAuthority {
     }
 
     /** Max request body: a sector save is a few MB, the rest is KB — Максимум тіла запиту: сейв сектора — кілька МБ, решта — кілобайти. */
-    static final int MAX_BODY = 64 * 1024 * 1024;
+    static final int MAX_BODY = 64 * 1024 * 1024, MAX_INFO = 1024 * 1024, MAX_SMALL = 64 * 1024;
 
-    static byte[] readBody(HttpExchange ex) throws IOException {
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        byte[] buf = new byte[8192];
-        InputStream in = ex.getRequestBody();
-        int n;
-        while ((n = in.read(buf)) > 0) {
-            out.write(buf, 0, n);
-            if (out.size() > MAX_BODY) throw new IOException("request body too large");
+    /** Body limit by path: save 64 MB, info 1 MB, everything else 64 KB — Ліміт тіла за шляхом: сейв 64 МБ, info 1 МБ, решта 64 КБ. */
+    static int bodyLimit(String path) {
+        if (path.endsWith("/save")) return MAX_BODY;
+        if (path.endsWith("/info")) return MAX_INFO;
+        return MAX_SMALL;
+    }
+
+    // ---------- Flood limits (this PC is exempt) — Обмеження від флуду (цей ПК не обмежується) ----------
+
+    static final int MAX_LINKS_PER_IP = 4, MAX_LINKS = 64;
+    /** Requests per second per address, and the burst allowed — Запитів на секунду з однієї адреси і дозволений сплеск. */
+    static final float RATE = 30f, BURST = 90f;
+    static final ConcurrentHashMap<String, java.util.concurrent.atomic.AtomicInteger> linksPerIp = new ConcurrentHashMap<>();
+    /** ip -> {tokens, last refill ms} — ip -> {токени, останнє поповнення мс} */
+    static final ConcurrentHashMap<String, double[]> buckets = new ConcurrentHashMap<>();
+    static final ConcurrentHashMap<Connection, String> connIp = new ConcurrentHashMap<>();
+
+    static String ipOf(Connection c) {
+        InetSocketAddress a = c.getRemoteAddressTCP();
+        return a == null ? "" : plainAddr(a.getAddress());
+    }
+
+    static boolean isLoopback(String ip) {
+        return ip.isEmpty() || ip.startsWith("127.") || ip.equals("0:0:0:0:0:0:0:1") || ip.equals("::1");
+    }
+
+    static int totalLinks() {
+        int n = 0;
+        for (var v : linksPerIp.values()) n += v.get();
+        return n;
+    }
+
+    /** Token bucket per address — Відро токенів на адресу. */
+    static boolean allowRate(String ip) {
+        if (isLoopback(ip)) return true;
+        double[] b = buckets.computeIfAbsent(ip, k -> new double[]{BURST, System.currentTimeMillis()});
+        synchronized (b) {
+            long now = System.currentTimeMillis();
+            b[0] = Math.min(BURST, b[0] + (now - b[1]) / 1000.0 * RATE);
+            b[1] = now;
+            if (b[0] < 1) return false;
+            b[0] -= 1;
+            return true;
         }
-        return out.toByteArray();
+    }
+
+    static byte[] readBody(Exchange ex) throws IOException {
+        if (ex.req.body.length > MAX_BODY) throw new IOException("request body too large");
+        return ex.req.body;
     }
 
     static volatile Set<String> contentNames;
@@ -728,20 +1487,78 @@ public class AuroraAuthority {
         return sb.append(']').toString();
     }
 
-    static void json(HttpExchange ex, int code, String body) throws IOException {
-        sendBytes(ex, code, "application/json", body.getBytes(StandardCharsets.UTF_8));
+    static void json(Exchange ex, int code, String body) throws IOException {
+        sendBytes(ex, code, body.getBytes(StandardCharsets.UTF_8));
     }
 
-    static void send(HttpExchange ex, int code, String body) throws IOException {
-        sendBytes(ex, code, "text/plain", body.getBytes(StandardCharsets.UTF_8));
+    static void send(Exchange ex, int code, String body) throws IOException {
+        sendBytes(ex, code, body.getBytes(StandardCharsets.UTF_8));
     }
 
-    static void sendBytes(HttpExchange ex, int code, String type, byte[] b) throws IOException {
-        ex.getResponseHeaders().set("Content-Type", type);
-        ex.sendResponseHeaders(code, b.length == 0 ? -1 : b.length);
-        if (b.length > 0) {
-            try (OutputStream o = ex.getResponseBody()) {
-                o.write(b);
+    static void sendBytes(Exchange ex, int code, byte[] b) throws IOException {
+        ex.code = code;
+        ex.body = b;
+    }
+
+    // ---------- ArcNet glue — Склейка з ArcNet ----------
+
+    /** Runs one request on a pool thread — Виконує один запит у потоці пулу. */
+    static void serve(Connection c, int id, byte[] raw) {
+        Exchange ex;
+        try {
+            ex = new Exchange(c, id, AuroraWire.decodeReq(raw));
+        } catch (Throwable e) {
+            Log.warn("Aurora Authority: bad request from @", c);
+            c.close(DcReason.error);
+            return;
+        }
+        handle(ex);
+    }
+
+    /**
+     * One request and its answer. The answer is sent on close(), or later through finish() for a parked /wait.
+     * — Один запит і відповідь на нього. Відповідь іде на close(), або пізніше через finish() для запаркованого /wait.
+     */
+    static final class Exchange {
+        final Connection conn;
+        final int id;
+        final AuroraWire.Req req;
+        final InetSocketAddress remote;
+        int code = 500;
+        byte[] body = new byte[0];
+        volatile boolean deferred;
+        boolean done;
+
+        Exchange(Connection conn, int id, AuroraWire.Req req) {
+            this.conn = conn;
+            this.id = id;
+            this.req = req;
+            InetSocketAddress r = conn.getRemoteAddressTCP();
+            this.remote = r != null ? r : new InetSocketAddress(InetAddress.getLoopbackAddress(), 0);
+        }
+
+        InetSocketAddress getRemoteAddress() {
+            return remote;
+        }
+
+        /** Path with query, for query() — Шлях із query, для query(). */
+        URI getRequestURI() {
+            return URI.create(req.path);
+        }
+
+        void close() {
+            if (!deferred) finish(code, body);
+        }
+
+        void finish(int code, byte[] body) {
+            synchronized (this) {
+                if (done) return;
+                done = true;
+            }
+            try {
+                AuroraWire.send(conn, AuroraWire.RESP, id, AuroraWire.encodeResp(code, body));
+            } catch (IOException e) {
+                Log.warn("Aurora Authority: could not answer @ (@)", conn, e.getMessage());
             }
         }
     }

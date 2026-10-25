@@ -121,6 +121,7 @@ public class Planets{
         }};
 
         serpulo = new Planet("serpulo", sun, 1f, 3){{
+            visualOrbitScale = 3f; // AURORA: visibly faster orbit — помітно швидша орбіта
             loadPlanetData = true;
             generator = new SerpuloPlanetGenerator();
             meshLoader = () -> new HexMesh(this, 6);

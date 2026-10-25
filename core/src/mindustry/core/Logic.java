@@ -36,6 +36,8 @@ import static mindustry.Vars.*;
 public class Logic implements ApplicationListener{
 
     public Logic(){
+        // AURORA: enemies explode on death in the hardest modes — Вороги вибухають після смерті в найскладніших режимах
+        Events.on(UnitDestroyEvent.class, e -> Difficulty.onUnitDeath(e.unit));
 
         Events.on(BlockDestroyEvent.class, event -> {
             //skip if rule is off
@@ -232,7 +234,8 @@ public class Logic implements ApplicationListener{
     public void play(){
         state.set(State.playing);
         //grace period of 2x wave time before game starts
-        state.wavetime = (state.rules.initialWaveSpacing <= 0 ? state.rules.waveSpacing * 2 : state.rules.initialWaveSpacing) * (state.isCampaign() ? state.getPlanet().campaignRules.difficulty.waveTimeMultiplier : 1f);;
+        // AURORA: prepTime() — more time before the first wave on the hardest modes — більше часу до першої хвилі на найважчих режимах
+        state.wavetime = (state.rules.initialWaveSpacing <= 0 ? state.rules.waveSpacing * 2 : state.rules.initialWaveSpacing) * (state.isCampaign() ? state.getPlanet().campaignRules.difficulty.prepTime() : 1f);
         Events.fire(new PlayEvent());
 
         //add starting items

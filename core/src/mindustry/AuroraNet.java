@@ -37,7 +37,9 @@ public class AuroraNet {
      * — Версія протоколу гра <-> Authority. ЗБІЛЬШУЙ на 1, коли міняєш формат запитів/відповідей
      * або додаєш обов'язковий ендпоінт. Різні версії не розмовляють: гравці бачать "оновіть білд".
      */
-    public static final int PROTOCOL = 2;
+    // 4: Authority over ArcNet instead of HTTP; 5: research opens only through a paid /spend
+    // — 4: Authority через ArcNet замість HTTP; 5: дослідження відкривається лише через оплачений /spend
+    public static final int PROTOCOL = 5;
 
     static long lastProtoMsg;
     /** Don't pop up the version dialog for this thread's requests (server list probe) — Не показувати вікно версії для запитів цього потоку (перевірка списку серверів). */
@@ -49,15 +51,14 @@ public class AuroraNet {
             if (Time.timeSinceMillis(lastProtoMsg) < 30000) return;
             lastProtoMsg = Time.millis();
             ui.loadfrag.hide();
-            ui.showErrorMessage("Aurora: різні версії гри.\nУ тебе протокол " + PROTOCOL + ", у хоста планети " +
-                (theirs <= 0 ? "старіший (без перевірки версії)" : String.valueOf(theirs)) + ".\nОновіть AURORA до однакового білда.");
+            ui.showErrorMessage(tr("proto.mismatch", String.valueOf(PROTOCOL), theirs <= 0 ? tr("proto.old") : String.valueOf(theirs)));
         });
     }
 
     /** -1 unreachable, 0 old Authority without /version, else its protocol — -1 недоступний, 0 старий без /version, інакше його версія. */
     static int remoteProtocol(String base) {
         try {
-            Res r = request(base, "GET", "/version", null, null, 2000);
+            Res r = request(base, "GET", "/version", null, PROBE_TIMEOUT);
             if (r.code == 404) return 0;
             if (r.code != 200) return -1;
             return parse(r).getInt("proto", 0);
@@ -85,22 +86,18 @@ public class AuroraNet {
     static volatile boolean shutdownDone;
 
     /**
-     * Authority URL: our own (127.0.0.1) on our own planet, the saved planet host URL as a guest.
-     * Our Authority never overwrites "aurora-authority", so a friend's URL is kept.
+     * Authority address "host:port": our own (127.0.0.1) on our own planet, the saved planet host address as a guest.
+     * Our Authority never overwrites "aurora-authority", so a friend's address is kept.
      * — Адреса Authority: на своїй планеті — свій (127.0.0.1), у гостя — збережена адреса хоста планети.
      * Свій Authority не перезаписує "aurora-authority", тож адреса друга не губиться.
      */
     static String authority() {
-        if (planetHost()) return "http://127.0.0.1:" + AuroraAuthority.port();
-        return Core.settings.getString("aurora-authority", "http://localhost:8443");
+        if (planetHost()) return "127.0.0.1:" + AuroraAuthority.port();
+        return AuroraWire.addr(Core.settings.getString("aurora-authority", "localhost:" + AuroraWire.DEFAULT_PORT));
     }
 
     static String authorityHost() {
-        try {
-            return new URL(authority()).getHost();
-        } catch (Exception e) {
-            return "127.0.0.1";
-        }
+        return AuroraWire.host(authority());
     }
 
     /** We are the planet host: own Authority running and we are on our own planet — Ми хост планети: свій Authority і ми на своїй планеті. */
@@ -157,11 +154,23 @@ public class AuroraNet {
         return player == null ? "" : Strings.stripColors(player.name);
     }
 
-    // ---------- HTTP ----------
+    // ---------- Requests to Authority — Запити до Authority ----------
+
+    /** Claim refused by the planet host (kick / ban), not a network error — Клейм відхилив власник планети (кік / бан), а не помилка мережі. */
+    static class RemovedException extends RuntimeException {
+        RemovedException(String msg) {
+            super(msg);
+        }
+    }
 
     static class Res {
         int code;
         byte[] body;
+    }
+
+    /** UI text from the bundles ("aurora." keys; English by default, Ukrainian in bundle_uk_UA) — Текст інтерфейсу з бандлів (ключі "aurora."; за замовчуванням англійська, українська в bundle_uk_UA). */
+    public static String tr(String key, Object... args) {
+        return args.length == 0 ? Core.bundle.get("aurora." + key) : Core.bundle.format("aurora." + key, args);
     }
 
     static JsonValue parse(Res r) {
@@ -190,8 +199,18 @@ public class AuroraNet {
     }
 
     /** Sector id used by Authority: "planet-id" — id сектора для Authority: "планета-номер". */
+    /** Cached "planet-id" strings: sid() is called per sector per frame on the maps — Кешовані рядки "планета-id": sid() викликається для кожного сектора щокадру на картах. */
+    static final java.util.concurrent.ConcurrentHashMap<mindustry.type.Planet, String[]> sidCache = new java.util.concurrent.ConcurrentHashMap<>();
+
     static String sid(Sector s) {
-        return s.planet.name + "-" + s.id;
+        String[] arr = sidCache.get(s.planet);
+        if (arr == null || arr.length <= s.id) {
+            arr = new String[Math.max(s.planet.sectors.size, s.id + 1)];
+            sidCache.put(s.planet, arr);
+        }
+        String r = arr[s.id];
+        if (r == null) arr[s.id] = r = s.planet.name + "-" + s.id;
+        return r;
     }
 
     /** "?player=<uuid>" for host-only requests — "?player=<uuid>" для запитів лише хоста. */
@@ -203,50 +222,28 @@ public class AuroraNet {
         return "/sector/" + sid(s) + "/" + action;
     }
 
-    static Res request(String method, String path, String contentType, byte[] data) throws Exception {
-        return request(authority(), method, path, contentType, data, 5000);
+    static Res request(String method, String path, byte[] data) throws Exception {
+        return request(authority(), method, path, data, 5000);
     }
 
-    /** One retry after 300 ms: Windows sometimes says "Address already in use" — Один повтор через 300 мс: Windows інколи каже "Address already in use". */
-    static Res request(String base, String method, String path, String contentType, byte[] data, int connectTimeout) throws Exception {
+    /** One retry after 300 ms if the link broke (a reconnect usually helps) — Один повтор через 300 мс, якщо з'єднання обірвалось (перепідключення зазвичай допомагає). */
+    static Res request(String base, String method, String path, byte[] data, int connectTimeout) throws Exception {
         try {
-            return request0(base, method, path, contentType, data, connectTimeout);
+            return request0(base, method, path, data, connectTimeout);
         } catch (SocketException e) {
             Thread.sleep(300);
-            return request0(base, method, path, contentType, data, connectTimeout);
+            return request0(base, method, path, data, connectTimeout);
         }
     }
 
-    static Res request0(String base, String method, String path, String contentType, byte[] data, int connectTimeout) throws Exception {
-        HttpURLConnection con = (HttpURLConnection) new URL(base + path).openConnection();
-        con.setConnectTimeout(connectTimeout);
-        con.setReadTimeout(15000);
-        con.setRequestMethod(method);
-        con.setRequestProperty("Connection", "close");
-        con.setRequestProperty("X-Aurora-Proto", String.valueOf(PROTOCOL));
+    /** One request to Authority over the persistent ArcNet link (see AuroraWire) — Один запит до Authority через постійне з'єднання ArcNet (див. AuroraWire). */
+    static Res request0(String base, String method, String path, byte[] data, int connectTimeout) throws Exception {
         String tok = Core.settings.getString("aurora-token", "");
-        if (!tok.isEmpty()) con.setRequestProperty("X-Aurora-Token", tok);
-        if (data != null) {
-            con.setDoOutput(true);
-            con.setRequestProperty("Content-Type", contentType);
-            con.setFixedLengthStreamingMode(data.length);
-            try (OutputStream out = con.getOutputStream()) {
-                out.write(data);
-            }
-        }
-
+        byte[] req = AuroraWire.encodeReq(method, path, tok, PROTOCOL, data == null ? new byte[0] : data);
+        Object[] r = AuroraWire.decodeResp(AuroraWire.call(base, req, connectTimeout, 15000));
         Res res = new Res();
-        res.code = con.getResponseCode();
-        InputStream in = res.code >= 400 ? con.getErrorStream() : con.getInputStream();
-        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-        if (in != null) {
-            byte[] buf = new byte[8192];
-            int n;
-            while ((n = in.read(buf)) != -1) bytes.write(buf, 0, n);
-            in.close();
-        }
-        res.body = bytes.toByteArray();
-        con.disconnect();
+        res.code = (Integer) r[0];
+        res.body = (byte[]) r[1];
 
         // 426 = Authority speaks another protocol version — 426 = Authority говорить іншою версією протоколу
         if (res.code == 426 && !quietProto.get()) {
@@ -261,16 +258,17 @@ public class AuroraNet {
     }
 
     static Res post(String path) throws Exception {
-        return request("POST", path, "text/plain", new byte[0]);
+        return request("POST", path, new byte[0]);
     }
 
     static Res get(String path) throws Exception {
-        return request("GET", path, null, null);
+        return request("GET", path, null);
     }
 
+    /** Upload to Authority (POST; request() already retries once) — Відправка в Authority (POST; request() уже має одну повторну спробу). */
     static void putBytes(String path, byte[] data) throws Exception {
-        Res res = request("PUT", path, "application/octet-stream", data);
-        if (res.code != 200) throw new RuntimeException("PUT " + path + " -> " + res.code);
+        Res res = request("POST", path, data);
+        if (res.code != 200) throw new RuntimeException("upload " + path + " -> " + res.code);
     }
 
     static byte[] getBytes(String path) throws Exception {
@@ -291,8 +289,22 @@ public class AuroraNet {
     }
 
     static Claim claim(Sector s) throws Exception {
-        String body = "{\"ip\":" + js(myIp()) + ",\"port\":" + myPort() + ",\"player\":" + js(me()) + "}";
-        Res res = request("POST", sectorPath(s, "claim"), "application/json", body.getBytes(StandardCharsets.UTF_8));
+        String body = "{\"ip\":" + js(myIp()) + ",\"port\":" + myPort() + ",\"player\":" + js(me()) + ",\"name\":" + js(myName()) + "}";
+        Res res = request("POST", sectorPath(s, "claim"), body.getBytes(StandardCharsets.UTF_8));
+        if (res.code == 403) {
+            // Planet host removed us: banned, or kicked (may come back in N s) — Власник планети нас видалив: бан або кік (можна повернутись через N с)
+            boolean banned = false;
+            int left = 0;
+            try {
+                JsonValue v = parse(res);
+                banned = v.getBoolean("banned", false);
+                left = v.getInt("kicked", 0);
+            } catch (Throwable ignored) {
+            }
+            throw new RemovedException(banned ? tr("removed.banned")
+                : left > 0 ? tr("removed.kicked", String.valueOf(left))
+                : tr("removed.refused"));
+        }
         if (res.code != 200) throw new RuntimeException("claim -> " + res.code);
         JsonValue v = parse(res);
         Claim c = new Claim();
@@ -326,6 +338,31 @@ public class AuroraNet {
         putBytes(sectorPath(s, "info") + asMe(), pack[1]);
     }
 
+    /**
+     * Every write of the hosted sector (save, info, stock + ack, release) goes through this one thread, in order:
+     * an older snapshot can never overwrite a newer one, and release always comes after the last save.
+     * — Кожен запис сектора, який ми хостимо (сейв, info, склад + підтвердження, release), іде через цей один потік, по черзі:
+     * старіший знімок ніколи не перезапише новіший, а release завжди йде після останнього сейва.
+     */
+    static final java.util.concurrent.ExecutorService uploads = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "aurora-upload");
+        t.setDaemon(true);
+        return t;
+    });
+
+    /** Queue an upload of a snapshot; on failure the next beat retries — Поставити в чергу заливання знімка; при помилці наступний beat спробує ще раз. */
+    static void upload(Sector s, byte[][] pack, String why) {
+        uploads.submit(() -> {
+            try {
+                push(s, pack);
+                if (why != null) Log.info("Aurora: sector @ saved to Authority (@)", sid(s), why);
+            } catch (Exception e) {
+                Log.err("upload failed (" + (why == null ? "beat" : why) + ")", e);
+                forcePush = true;
+            }
+        });
+    }
+
     // ---------- Entering a sector — Вхід у сектор ----------
 
     /** Another sector picked on the map: a host leaves cleanly, a client disconnects quietly, then both enter
@@ -353,6 +390,8 @@ public class AuroraNet {
         syncUnlocks();
         ui.loadfrag.show("Aurora...");
         mainExecutor.submit(() -> {
+            // Planet host's campaign rules before the sector loads — Правила кампанії хоста планети до завантаження сектора
+            syncRulesNow();
             try {
                 Claim c = claim(sector);
 
@@ -360,9 +399,33 @@ public class AuroraNet {
                     // Host vanished: wait for the check (30 s) and grace time (15 s), then retry — Хост зник: чекаємо перевірку (30 с) і запас (15 с), потім знову
                     Core.app.post(() -> waitForSector(sector, c));
                 } else if (c.host) {
-                    byte[] save = getBytes(sectorPath(sector, "save"));
-                    byte[] info = getBytes(sectorPath(sector, "info"));
-                    Core.app.post(() -> startHosting(sector, save, info));
+                    // Pay for the launch now that the sector is ours — Платимо за запуск тепер, коли сектор наш
+                    ObjectIntMap<Item> cost = launchCost;
+                    if (launchFrom != null && cost != null && cost.size > 0) {
+                        int code = spendBlocking(cost);
+                        if (code != 200) {
+                            release(sector, "launch unpaid");
+                            Core.app.post(() -> {
+                                clearLaunch();
+                                ui.loadfrag.hide();
+                                ui.showInfoToast(code == 409 ? tr("launch.noitems") : tr("launch.noconnection"), 4f);
+                            });
+                            return;
+                        }
+                        launchCost = null;
+                        refreshItems(true);
+                    }
+                    // 404 = Authority has no such sector (new or abandoned); any other error: don't guess, stop
+                    // — 404 = в Authority такого сектора нема (новий або покинутий); будь-яка інша помилка: не вгадуємо, зупиняємось
+                    Res sr = get(sectorPath(sector, "save")), ir = get(sectorPath(sector, "info"));
+                    if ((sr.code != 200 && sr.code != 404) || (ir.code != 200 && ir.code != 404)) {
+                        release(sector, "enter: download failed");
+                        throw new RuntimeException("sector download -> " + sr.code + "/" + ir.code);
+                    }
+                    byte[] save = sr.code == 200 ? sr.body : null;
+                    byte[] info = ir.code == 200 ? ir.body : null;
+                    boolean none = sr.code == 404;
+                    Core.app.post(() -> startHosting(sector, save, info, none));
                 } else {
                     // Host on the planet host's PC reports loopback: use the Authority address instead — Хост на ПК хоста планети дає loopback: беремо адресу Authority
                     String ip = (c.ip == null || c.ip.equals("127.0.0.1") || c.ip.equals("localhost")) ? authorityHost() : c.ip;
@@ -371,6 +434,8 @@ public class AuroraNet {
                         return;
                     }
                     Core.app.post(() -> {
+                        // Someone else already hosts it: the launch is not needed (and was not paid) — Хтось уже хостить: запуск не потрібен (і не оплачений)
+                        clearLaunch();
                         current = sector;
                         asClient = true;
                         connectedOnce = false;
@@ -382,8 +447,10 @@ public class AuroraNet {
             } catch (Throwable e) {
                 Log.err("AuroraNet.enter failed", e);
                 Core.app.post(() -> {
+                    clearLaunch();
                     ui.loadfrag.hide();
-                    ui.showException("Authority недоступний", e);
+                    if (e instanceof RemovedException) ui.showInfo("[scarlet]Aurora:[] " + e.getMessage());
+                    else ui.showException(tr("authority.unavailable"), e);
                 });
             }
         });
@@ -395,11 +462,12 @@ public class AuroraNet {
     static void waitForSector(Sector sector, Claim c) {
         if (waitCancelled) {
             waitCancelled = false;
+            clearLaunch();
             ui.loadfrag.hide();
             return;
         }
-        String what = "lost".equals(c.state) ? "Хост сектора не відповідає, перевіряємо" : "Сектор оновлюється";
-        ui.loadfrag.show("[accent]Aurora:[] " + what + "...\nВідкриється приблизно через " + c.retry + " с");
+        String what = "lost".equals(c.state) ? tr("wait.lost") : tr("wait.updating");
+        ui.loadfrag.show(tr("wait.text", what, String.valueOf(c.retry)));
         ui.loadfrag.setButton(() -> {
             waitCancelled = true;
             ui.loadfrag.hide();
@@ -407,6 +475,7 @@ public class AuroraNet {
         Time.runTask(Math.min(c.retry, 3) * 60f, () -> {
             if (waitCancelled) {
                 waitCancelled = false;
+                clearLaunch();
                 return;
             }
             enter(sector);
@@ -432,8 +501,36 @@ public class AuroraNet {
 
     /** We became the host: restore the sector from Authority and load it; hosting starts on WorldLoadEvent
      * — Ми стали хостом: відновлюємо сектор з Authority і вантажимо; хостинг стартує на WorldLoadEvent. */
-    static void startHosting(Sector sector, byte[] save, byte[] info) {
+    /**
+     * AURORA: set by a vanilla-style launch (loadout + resources already paid): a brand-new sector is started from this one.
+     * — Ставиться ванільним запуском (набір + ресурси вже оплачені): новий сектор стартує з цього.
+     */
+    public static volatile @Nullable Sector launchFrom;
+    /**
+     * AURORA: what the pending launch costs. Paid only after Authority made us the host of the new sector,
+     * so a launch onto a sector someone else just took costs nothing.
+     * — Скільки коштує запланований запуск. Оплачується лише після того, як Authority зробив нас хостом нового сектора,
+     * тож запуск на сектор, який щойно зайняв інший, нічого не коштує.
+     */
+    public static volatile @Nullable ObjectIntMap<Item> launchCost;
+
+    public static void clearLaunch() {
+        launchFrom = null;
+        launchCost = null;
+    }
+
+    static void startHosting(Sector sector, byte[] save, byte[] info, boolean noneOnAuthority) {
         try {
+            // Guest: Authority has no save (new or abandoned by the planet host), so our local copy from earlier is stale.
+            // Throw it away, or it would bring an abandoned base back. Own planet keeps local data (Authority is ours).
+            // — Гість: в Authority сейва нема (новий сектор або покинутий власником), тож наша локальна копія застаріла.
+            // Викидаємо її, інакше вона поверне покинуту базу. Своя планета локальне не чіпає (Authority наш).
+            if (noneOnAuthority && campaignSlot == slotGuest) {
+                if (sector.save != null) sector.save.delete();
+                else control.saves.getSectorFile(sector).delete();
+                sector.save = null;
+                sector.clearInfo();
+            }
             if (save != null) {
                 control.saves.getSectorFile(sector).writeBytes(save);
                 sector.save = null;
@@ -447,21 +544,70 @@ public class AuroraNet {
         hosting = true;
         wantHost = true;
         ui.loadfrag.hide();
-        control.playSector(sector);
+        Sector from = launchFrom;
+        clearLaunch();
+        // New sector (no save on Authority) launched from a captured one: vanilla loadout and resources — Новий сектор (нема сейву в Authority), запущений із захопленого: ванільний набір і ресурси
+        // Also a lost sector (save exists, core destroyed) restarts from the launcher — Також програний сектор (сейв є, ядро знищене) стартує з сектора-запуску
+        if (from != null && from != sector && !sector.hasBase()) control.playSector(from, sector);
+        else control.playSector(sector);
     }
 
     /** Server self-check (UDP ping to ourselves) — Самоперевірка сервера (UDP-пінг самого себе). */
     static void selfCheck(String tag, boolean quietOk) {
         net.pingHost("127.0.0.1", myPort(),
             h -> {
-                if (!quietOk) ui.showInfoToast("[accent]Aurora " + tag + ": сервер живий", 3f);
+                if (!quietOk) ui.showInfoToast(tr("selfcheck.ok", tag), 3f);
             },
-            e -> ui.showInfoToast("[scarlet]Aurora " + tag + ": сервер НЕ відповідає", 8f));
+            e -> ui.showInfoToast(tr("selfcheck.fail", tag), 8f));
     }
 
     // ---------- Heartbeat ----------
 
     static Timer.Task beat;
+    /** AURORA: fast stock sync while hosting (every STOCK_EVERY s), separate from the 10 s beat — Швидка синхронізація складу, поки хостимо (кожні STOCK_EVERY с), окремо від 10-секундного beat. */
+    static Timer.Task stockTask;
+    static final float STOCK_EVERY = 5f;
+    /** Generation of the long-poll waiter; bumping it stops the old thread — Покоління waiter'а long poll; збільшення зупиняє старий потік. */
+    static volatile int waitGen;
+
+    /**
+     * Host: keep a /wait request open at Authority. It returns as soon as someone spends or asks for fresh stock,
+     * and then we sync right away. An old Authority without /wait (404) leaves only the periodic sync.
+     * — Хост: тримаємо відкритий запит /wait в Authority. Він повертається, щойно хтось витрачає або просить свіжий склад,
+     * і тоді ми одразу синхронізуємось. Старий Authority без /wait (404) лишає тільки періодичну синхронізацію.
+     */
+    static void startWaiter(Sector s) {
+        int gen = ++waitGen;
+        Thread t = new Thread(() -> {
+            long since = -1;
+            while (gen == waitGen) {
+                try {
+                    Res r = get(sectorPath(s, "wait") + asMe() + "&since=" + since);
+                    if (gen != waitGen) break;
+                    if (r.code == 200) {
+                        since = parse(r).getLong("ver", since);
+                        Core.app.post(() -> {
+                            if (hosting && current == s && !stockBusy) syncStock(s);
+                        });
+                    } else if (r.code == 404) {
+                        break;
+                    } else {
+                        Thread.sleep(2000);
+                    }
+                } catch (Throwable e) {
+                    try {
+                        Thread.sleep(2000);
+                    } catch (InterruptedException ignored) {
+                        break;
+                    }
+                }
+            }
+        }, "aurora-wait");
+        t.setDaemon(true);
+        t.start();
+    }
+    /** A stock sync is in flight; skip overlapping ones — Синхронізація складу вже йде; накладені пропускаємо. */
+    static volatile boolean stockBusy;
     static int beats, beatFails;
     /** Upload the save on the next beat (after a failure) — Залити сейв на наступному beat (після помилки). */
     static boolean forcePush;
@@ -479,16 +625,22 @@ public class AuroraNet {
         beats = 0;
         beatFails = 0;
         forcePush = false;
+        // Instant sync on demand, plus a periodic fallback every 5 s — Миттєва синхронізація на вимогу плюс запасна періодична кожні 5 с
+        if (current != null) startWaiter(current);
+        stockTask = Timer.schedule(() -> Core.app.post(() -> {
+            Sector s = current;
+            if (hosting && s != null && !stockBusy) syncStock(s);
+        }), STOCK_EVERY, STOCK_EVERY);
         beat = Timer.schedule(() -> Core.app.post(() -> {
             Sector s = current;
             if (!hosting || s == null) return;
-            syncStock(s);
             boolean up = ++beats % PUSH_EVERY_BEATS == 0 || forcePush;
             forcePush = false;
             if (beats % 3 == 0) selfCheck("beat", true);
             byte[][] pack = up ? snapshot(s) : null;
             if (pack != null) lastPush = Time.millis();
             boolean reclaim = beatFails > 0;
+            byte[] hbBody = heartbeatBody();
             mainExecutor.submit(() -> {
                 boolean ok = false;
                 try {
@@ -502,8 +654,15 @@ public class AuroraNet {
                         }
                     }
                     // 404: Authority forgot us (restart), next beat claims again — 404: Authority нас забув (рестарт), наступний beat заклеймить знову
-                    if (post(sectorPath(s, "heartbeat") + asMe()).code == 404) throw new RuntimeException("heartbeat: not the host anymore");
-                    if (pack != null) push(s, pack);
+                    Res hb = request("POST", sectorPath(s, "heartbeat") + asMe(), hbBody);
+                    if (hb.code == 403) {
+                        // The planet host removed us — Власник планети нас видалив
+                        Core.app.post(() -> removedFromPlanet(s));
+                        return;
+                    }
+                    if (hb.code == 404) throw new RuntimeException("heartbeat: not the host anymore");
+                    if (hb.code == 200) applyKicks(hb);
+                    if (pack != null) upload(s, pack, null); // ordered with every other write — по черзі з усіма іншими записами
                     ok = true;
                 } catch (Exception e) {
                     Log.err("beat failed", e);
@@ -515,20 +674,25 @@ public class AuroraNet {
     }
 
     static void stopBeat() {
+        waitGen++;
         if (beat != null) {
             beat.cancel();
             beat = null;
+        }
+        if (stockTask != null) {
+            stockTask.cancel();
+            stockTask = null;
         }
     }
 
     static void onBeat(boolean ok) {
         if (ok) {
-            if (beatFails >= 3) ui.showInfoToast("[accent]Aurora: зв'язок з Authority відновлено", 4f);
+            if (beatFails >= 3) ui.showInfoToast(tr("connection.restored"), 4f);
             beatFails = 0;
         } else {
             forcePush = true;
             if (++beatFails == 3) {
-                ui.showInfoToast("[scarlet]Aurora: Authority недоступний.\nПрогрес не зберігається, гра триває.", 8f);
+                ui.showInfoToast(tr("connection.lost"), 8f);
             }
         }
     }
@@ -549,10 +713,61 @@ public class AuroraNet {
         current = null;
         if (net.server()) net.closeServer();
         logic.reset();
-        ui.showInfoToast("[accent]Aurora:[] сектор уже хостить інший гравець.\nПідключаємось до нього, твої зміни з часу обриву зв'язку не збережено.", 7f);
+        ui.showInfoToast(tr("sector.taken"), 7f);
         Time.runTask(60f, () -> {
             if (!hosting && !asClient && auroraSlot()) enter(s);
         });
+    }
+
+    /**
+     * Our sector's players for Authority: [{uuid, ip, name, pid}], ourselves included (ip empty, Authority knows it).
+     * pid = entity id, so the planet host can point at a player he sees here. Main thread.
+     * — Гравці нашого сектора для Authority: [{uuid, ip, name, pid}], разом із нами (ip порожній, Authority його знає).
+     * pid = id сутності, щоб власник планети міг вказати на гравця, якого тут бачить. Головний потік.
+     */
+    static byte[] heartbeatBody() {
+        StringBuilder sb = new StringBuilder("[");
+        Groups.player.each(p -> {
+            if (!p.isLocal() && p.con == null) return;
+            if (sb.length() > 1) sb.append(',');
+            String uuid = p.isLocal() ? me() : p.con.uuid, ip = p.isLocal() ? "" : plainIp(p.con.address);
+            sb.append("{\"uuid\":").append(js(uuid)).append(",\"ip\":").append(js(ip))
+                .append(",\"name\":").append(js(Strings.stripColors(p.name))).append(",\"pid\":").append(p.id).append('}');
+        });
+        return sb.append(']').toString().getBytes(StandardCharsets.UTF_8);
+    }
+
+    /** Heartbeat answer: {"kick":[uuid...]} — players the planet host removed — Відповідь heartbeat: гравці, яких видалив власник планети. */
+    static void applyKicks(Res hb) {
+        if (hb.body == null || hb.body.length == 0) return;
+        ObjectSet<String> out = new ObjectSet<>();
+        try {
+            JsonValue k = parse(hb).get("kick");
+            for (JsonValue c = k == null ? null : k.child; c != null; c = c.next) out.add(c.asString());
+        } catch (Throwable ignored) {
+            return;
+        }
+        if (out.isEmpty()) return;
+        Core.app.post(() -> Groups.player.each(p -> {
+            if (!p.isLocal() && p.con != null && out.contains(p.con.uuid)) {
+                Log.info("Aurora: removing @ (planet host's decision)", p.plainName());
+                p.kick(mindustry.net.Packets.KickReason.kick);
+            }
+        }));
+    }
+
+    /** The planet host removed us while we host a sector: close it, save nothing, back to the menu — Власник планети видалив нас, поки ми хостимо сектор: закрити, нічого не зберігати, в меню. */
+    static void removedFromPlanet(Sector s) {
+        if (!hosting || current != s) return;
+        Log.warn("Aurora: removed from the planet by its host");
+        hosting = false;
+        hostLive = false;
+        wantHost = false;
+        stopBeat();
+        current = null;
+        if (net.server()) net.closeServer();
+        logic.reset();
+        ui.showInfo(tr("removed.fromplanet"));
     }
 
     // ---------- Event saves — Збереження при подіях ----------
@@ -572,15 +787,7 @@ public class AuroraNet {
             byte[][] pack = snapshot(s);
             if (pack == null) return;
             lastPush = Time.millis();
-            mainExecutor.submit(() -> {
-                try {
-                    push(s, pack);
-                    Log.info("Aurora: sector @ saved to Authority (@)", sid(s), why);
-                } catch (Exception e) {
-                    Log.err("event push failed (" + why + ")", e);
-                    forcePush = true; // next beat retries — наступний beat спробує ще раз
-                }
-            });
+            upload(s, pack, why);
         });
     }
 
@@ -594,19 +801,19 @@ public class AuroraNet {
         byte[][] pack = snapshot(s);
         if (pack == null) return;
         lastPush = Time.millis();
-        Thread t = new Thread(() -> {
+        // Same queue as every other write, we only wait for it — Та сама черга, що й для всіх записів, лише чекаємо на неї
+        var f = uploads.submit(() -> {
             try {
                 push(s, pack);
                 Log.info("Aurora: sector @ saved on pause", sid(s));
             } catch (Exception e) {
                 Log.err("pause push failed", e);
+                forcePush = true;
             }
-        }, "aurora-pause-push");
-        t.setDaemon(true);
-        t.start();
+        });
         try {
-            t.join(timeoutMs);
-        } catch (InterruptedException ignored) {
+            f.get(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS);
+        } catch (Exception ignored) {
         }
     }
 
@@ -631,8 +838,9 @@ public class AuroraNet {
         stopBeat();
         byte[][] pack = snapshot(s);   // world still alive, take a snapshot — світ ще живий, робимо знімок
         net.closeServer();             // free the port BEFORE release — порт звільняємо ДО release
-        ui.loadfrag.show("Aurora: зберігаю...");
-        mainExecutor.submit(() -> {
+        ui.loadfrag.show(tr("saving"));
+        // After everything already queued: the last save lands before release — Після всього, що вже в черзі: останній сейв приходить до release
+        uploads.submit(() -> {
             try {
                 if (pack != null) push(s, pack);
             } catch (Exception e) {
@@ -664,15 +872,30 @@ public class AuroraNet {
         shutdownDone = true;
         Sector s = current;
         if (hosting && s != null) {
+            byte[][] pack = null;
             try {
-                byte[][] pack = snapshot(s);
-                if (pack != null) push(s, pack);
+                pack = snapshot(s);
             } catch (Throwable t) {
-                Log.err("shutdown: push failed", t);
+                Log.err("shutdown: snapshot failed", t);
             }
-            release(s, "shutdown");
+            byte[][] fp = pack;
+            // Through the upload queue (after any queued save), wait a few seconds at most — Через чергу заливань (після вже поставлених), чекаємо щонайбільше кілька секунд
+            var f = uploads.submit(() -> {
+                try {
+                    if (fp != null) push(s, fp);
+                } catch (Throwable t) {
+                    Log.err("shutdown: push failed", t);
+                }
+                release(s, "shutdown");
+            });
+            try {
+                f.get(8, java.util.concurrent.TimeUnit.SECONDS);
+            } catch (Exception e) {
+                Log.err("shutdown: upload queue did not finish in time", e);
+            }
         }
         if (localAuthority) AuroraAuthority.stop(); // snapshot/release first, then stop — спершу знімок/release, потім stop
+        AuroraWire.closeAll();
     }
 
     /** Reset "client of a sector" state — Скинути стан "клієнт сектора". */
@@ -687,7 +910,7 @@ public class AuroraNet {
     public static void hostLeft() {
         if (!asClient) return;
         endClient();
-        ui.showInfoToast("[accent]Aurora:[] хост вийшов із сектора", 4f);
+        ui.showInfoToast(tr("host.left"), 4f);
         returnFromSector();
     }
 
@@ -701,7 +924,7 @@ public class AuroraNet {
                 guestSession = false;
                 if (net.client()) netClient.disconnectQuietly();
                 ui.planet.hide();
-                showGone("Aurora: Authority недоступний.\nПовертаємось у головне меню.");
+                showGone(tr("gone.authority"));
             }
         });
     }
@@ -788,18 +1011,155 @@ public class AuroraNet {
      * Хтось на ворожій базі (атака): блимає червоним.
      */
     public static void drawLiveSector(PlanetRenderer planets, Sector sec, boolean base, boolean waves, boolean attack, float alpha) {
-        if (!liveSector(sec)) return;
-        float pulse = Mathf.absin(Time.time, 7f, 1f);
+        float[] w = weights(sec, base, waves, attack);
+        int o = sec.id * 3;
+        float blue = w[o], capture = w[o + 1], atk = w[o + 2];
+        if (blue <= 0f && capture <= 0f && atk <= 0f) return;
         Color c = Tmp.c1;
-        if (attack || (!base && sec.hasEnemyBase())) {
-            Color red = attackColor;
-            planets.fill(sec, c.set(red).a(alpha * (0.15f + 0.35f * pulse)), -0.001f);
-            planets.drawBorders(sec, red, alpha * (0.5f + 0.5f * pulse));
-        } else if (!base || waves) {
-            planets.fill(sec, c.set(allyColor).a(alpha * (0.15f + 0.35f * pulse)), -0.001f);
-        } else {
-            planets.drawSelection(sec, c.set(allyColor).a(alpha), 0.026f, -0.001f);
+
+        // Every state fades in / out over FADE_TICKS, so switching between them is smooth — Кожен стан плавно з'являється / зникає за FADE_TICKS, тож перемикання між ними плавне
+        if (atk > 0f) {
+            // Attack: fast red blinking, red edges, red runner — Атака: швидке червоне блимання, червоні краї, червоний бігунок
+            float pulse = Mathf.absin(Time.time, 7f, 1f);
+            planets.fill(sec, c.set(attackColor).a(alpha * atk * (0.15f + 0.35f * pulse)), -0.001f);
+            planets.drawBorders(sec, attackColor, alpha * atk * (0.5f + 0.5f * pulse));
+            drawRunner(planets, sec, alpha * atk, attackColor);
         }
+        if (capture > 0f) {
+            // Not captured yet (waves still running): calm red fill breathing once per second + red runner
+            // — Ще не захоплений (хвилі ще йдуть): спокійна червона заливка, що "дихає" раз на секунду, + червоний бігунок
+            float breath = 0.5f + 0.5f * Mathf.sin((float) (Time.globalTime / 60.0 * Mathf.PI2));
+            planets.fill(sec, c.set(attackColor).a(alpha * capture * (0.08f + 0.22f * breath)), -0.001f);
+            drawRunner(planets, sec, alpha * capture, attackColor);
+        }
+        if (blue > 0f) {
+            // Captured base with a player: blue runner (the frame itself turns blue in frameColor) — Захоплена база з гравцем: синій бігунок (сама рамка синіє в frameColor)
+            drawRunner(planets, sec, alpha * blue, allyColor);
+        }
+    }
+
+    /** State fade time, ticks (0.5 s) — Час переходу між станами, тіки (0.5 с). */
+    static final float FADE_TICKS = 30f;
+    /** Per planet: 3 weights per sector (blue, capturing, attack) and the last update time — На планету: 3 ваги на сектор (синій, захоплення, атака) і час останнього оновлення. */
+    static final ObjectMap<mindustry.type.Planet, float[]> blendValue = new ObjectMap<>();
+    static final ObjectMap<mindustry.type.Planet, double[]> blendTime = new ObjectMap<>();
+    static final Color frameTmp = new Color();
+
+    /** Sector not fully captured yet: no base, or waves still running — Сектор ще не повністю захоплений: бази нема, або хвилі ще йдуть. */
+    public static boolean capturing(boolean base, boolean waves) {
+        return !base || waves;
+    }
+
+    /**
+     * Moves the three state weights of a sector toward their targets and returns the planet's weight array
+     * (index sector.id * 3 + 0 blue, 1 capturing, 2 attack). Exactly one target is 1 while someone plays, none otherwise.
+     * The first call for a sector (map just opened) jumps straight to the targets. Main thread only.
+     * — Рухає три ваги станів сектора до цілей і повертає масив ваг планети
+     * (індекс sector.id * 3 + 0 синій, 1 захоплення, 2 атака). Поки хтось грає, рівно одна ціль = 1, інакше жодна.
+     * Перший виклик для сектора (карту щойно відкрили) одразу стає цільовим. Лише головний потік.
+     */
+    static float[] weights(Sector sec, boolean base, boolean waves, boolean attack) {
+        float[] v = blendValue.get(sec.planet);
+        double[] last = blendTime.get(sec.planet);
+        if (v == null || v.length < (sec.id + 1) * 3) {
+            int size = Math.max(sec.planet.sectors.size, sec.id + 1);
+            blendValue.put(sec.planet, v = new float[size * 3]);
+            blendTime.put(sec.planet, last = new double[size]);
+        }
+        double now = Time.globalTime;
+        float dt = (float) (now - last[sec.id]);
+        if (last[sec.id] == 0 || dt < 0 || dt > 120f) dt = FADE_TICKS; // first look / long gap: no fade — перший погляд / довга перерва: без переходу
+        last[sec.id] = now;
+
+        boolean live = liveSector(sec);
+        boolean atk = live && (attack || (!base && sec.hasEnemyBase()));
+        boolean cap = live && !atk && capturing(base, waves);
+        boolean blue = live && !atk && !cap;
+        float step = dt / FADE_TICKS;
+        int o = sec.id * 3;
+        v[o] = Mathf.approach(v[o], blue ? 1f : 0f, step);
+        v[o + 1] = Mathf.approach(v[o + 1], cap ? 1f : 0f, step);
+        v[o + 2] = Mathf.approach(v[o + 2], atk ? 1f : 0f, step);
+        return v;
+    }
+
+    static final arc.math.geom.Vec3 runCenter = new arc.math.geom.Vec3(), runO1 = new arc.math.geom.Vec3(), runO2 = new arc.math.geom.Vec3(),
+        runI1 = new arc.math.geom.Vec3(), runI2 = new arc.math.geom.Vec3(), runA0 = new arc.math.geom.Vec3(), runA1 = new arc.math.geom.Vec3(),
+        runB0 = new arc.math.geom.Vec3(), runB1 = new arc.math.geom.Vec3();
+    /** Runner speed (edges per second), tail length (edges), slices per edge — Швидкість бігунка (ребер за секунду), довжина хвоста (ребер), шматків на ребро. */
+    static final float RUN_SPEED = 1.5f, RUN_TAIL = 1.6f;
+    static final int RUN_SLICES = 6;
+
+    /**
+     * A bright light running along the sector frame, with a fading tail. Drawn a hair above the frame so it is not hidden by it.
+     * Main thread only (shared temp vectors).
+     * — Яскравий вогник, що біжить по рамці сектора, з хвостом, що згасає. Малюється трохи вище рамки, щоб вона його не ховала.
+     * Лише головний потік (спільні тимчасові вектори).
+     */
+    static final Color runBase = new Color();
+
+    static void drawRunner(PlanetRenderer planets, Sector sec, float alpha, Color color) {
+        runBase.set(color);
+        var corners = sec.tile.corners;
+        int n = corners.length;
+        runArad = (PlanetRenderer.outlineRad + 0.0005f) * sec.planet.radius;
+        runCenter.set(sec.tile.v).scl(runArad);
+        // globalTime keeps running while the game is paused on the planet map — globalTime іде далі, навіть коли гра на паузі на карті планети
+        float head = (float) ((Time.globalTime / 60.0 * RUN_SPEED) % n);
+        float tail = head - RUN_TAIL;
+        // The lit stretch [tail, head] along the frame; if it wraps past corner 0, draw its end piece too
+        // — Освітлений відрізок [tail, head] вздовж рамки; якщо він переходить через кут 0, малюємо і його кінець
+        runSpan(planets, sec, corners, n, Math.max(tail, 0f), head, 0f, tail, alpha);
+        if (tail < 0f) runSpan(planets, sec, corners, n, n + tail, n, n, tail, alpha);
+        if (planets.batch.getNumVertices() >= planets.batch.getMaxVertices() - 6 * 6 * RUN_SLICES) planets.batch.flush(arc.graphics.Gl.triangles);
+    }
+
+    static float runArad;
+
+    /** Draws frame positions [s, e] (in edges); off maps them back to the tail..head scale — Малює позиції рамки [s, e] (у ребрах); off переводить їх назад у шкалу tail..head. */
+    static void runSpan(PlanetRenderer planets, Sector sec, PlanetGrid.Corner[] corners, int n, float s, float e, float off, float tail, float alpha) {
+        if (e <= s) return;
+        float stroke = 0.03f;
+        for (int i = (int) Math.floor(s); i < Math.ceil(e) && i < n; i++) {
+            float a = Math.max(s, i), b = Math.min(e, i + 1);
+            if (b <= a) continue;
+            runO1.set(corners[i].v).scl(runArad);
+            runO2.set(corners[(i + 1) % n].v).scl(runArad);
+            runI1.set(runO1).sub(runCenter).setLength(runO1.dst(runCenter) - stroke).add(runCenter);
+            runI2.set(runO2).sub(runCenter).setLength(runO2.dst(runCenter) - stroke).add(runCenter);
+            for (int k = 0; k < RUN_SLICES; k++) {
+                float x0 = a + (b - a) * k / RUN_SLICES, x1 = a + (b - a) * (k + 1) / RUN_SLICES;
+                runA0.set(runO1).lerp(runO2, x0 - i);
+                runA1.set(runO1).lerp(runO2, x1 - i);
+                runB0.set(runI1).lerp(runI2, x0 - i);
+                runB1.set(runI1).lerp(runI2, x1 - i);
+                // Brightness grows smoothly from the tail (0) to the head (1), per vertex — Яскравість плавно росте від хвоста (0) до голови (1), для кожної вершини
+                Color c0 = runColor(runC0, (x0 - off - tail) / RUN_TAIL, alpha), c1 = runColor(runC1, (x1 - off - tail) / RUN_TAIL, alpha);
+                var batch = planets.batch;
+                batch.vertex(runA0, c0);
+                batch.vertex(runA1, c1);
+                batch.vertex(runB0, c0);
+                batch.vertex(runB0, c0);
+                batch.vertex(runA1, c1);
+                batch.vertex(runB1, c1);
+            }
+        }
+    }
+
+    static final Color runC0 = new Color(), runC1 = new Color();
+
+    static Color runColor(Color out, float f, float alpha) {
+        f = Mathf.clamp(f);
+        return out.set(runBase).lerp(Color.white, 0.6f).a(alpha * f * f * (3f - 2f * f));
+    }
+
+    /**
+     * Frame color of a base: blue while someone plays there (and it is not under attack), orange otherwise.
+     * — Колір рамки бази: синій, поки там хтось грає (і нема атаки), інакше помаранчевий.
+     */
+    public static Color frameColor(Sector sec, boolean attack, boolean waves) {
+        // Smooth orange <-> blue; stays orange while the sector is still being captured — Плавно помаранчевий <-> синій; лишається помаранчевим, поки сектор ще захоплюють
+        return frameTmp.set(baseColor).lerp(allyColor, weights(sec, true, waves, attack)[sec.id * 3]);
     }
 
     /** Pull sector states and live hosts from Authority (every 5 s) — Тягне стан секторів і живих хостів з Authority (кожні 5 с). */
@@ -853,7 +1213,7 @@ public class AuroraNet {
                     u.unlock();
                     String who = by.get(u.name, "");
                     if (state.isGame() && !who.isEmpty() && !who.equals(myName())) {
-                        ui.hudfrag.showToast(new arc.scene.style.TextureRegionDrawable(u.uiIcon), "[accent]" + who + "[] дослідив: " + u.localizedName);
+                        ui.hudfrag.showToast(new arc.scene.style.TextureRegionDrawable(u.uiIcon), tr("researched", who, u.localizedName));
                     }
                 }
             } else {
@@ -864,7 +1224,7 @@ public class AuroraNet {
                 }
                 // One event so the build menu and tech tree rebuild — Одна подія, щоб перебудувались меню будівництва й дерево
                 Events.fire(new UnlockEvent(fresh.peek()));
-                if (state.isGame()) ui.hudfrag.showToast(Icon.book, "[accent]Aurora:[] отримано досліджень: " + fresh.size);
+                if (state.isGame()) ui.hudfrag.showToast(Icon.book, tr("researched.bulk", String.valueOf(fresh.size)));
             }
         } finally {
             applyingRemote = false;
@@ -918,6 +1278,206 @@ public class AuroraNet {
         });
     }
 
+    // ---------- Shared campaign rules — Спільні правила кампанії ----------
+
+    /** A guest plays on someone else's planet: campaign rules come from that planet's host — Гість грає на чужій планеті: правила кампанії приходять від хоста планети. */
+    public static boolean rulesFromHost() {
+        return campaignSlot == slotGuest;
+    }
+
+    /** Pulls the planet host's campaign rules (guest only) and applies them — Тягне правила кампанії хоста планети (лише гість) і застосовує їх. */
+    public static void syncRules() {
+        if (!rulesFromHost()) return;
+        mainExecutor.submit(AuroraNet::syncRulesNow);
+    }
+
+    /** Blocking fetch, result applied on the main thread — Блокуючий запит, результат застосовується в головному потоці. */
+    static void syncRulesNow() {
+        if (!rulesFromHost()) return;
+        try {
+            Res res = get("/rules");
+            if (res.code != 200) return; // old Authority without /rules — старий Authority без /rules
+            JsonValue root = parse(res);
+            Core.app.post(() -> applyRules(root));
+        } catch (Throwable t) {
+            Log.err("syncRules failed", t);
+        }
+    }
+
+    static void applyRules(JsonValue root) {
+        if (!rulesFromHost()) return;
+        for (JsonValue c = root.child; c != null; c = c.next) {
+            mindustry.type.Planet pl = content.planet(c.name);
+            if (pl == null) continue;
+            mindustry.game.CampaignRules remote;
+            try {
+                remote = mindustry.io.JsonIO.json.readValue(mindustry.game.CampaignRules.class, c);
+            } catch (Throwable ex) {
+                continue; // unknown fields / values (other version) — невідомі поля / значення (інша версія)
+            }
+            if (remote == null || remote.difficulty == null) continue;
+            String was = mindustry.io.JsonIO.write(pl.campaignRules);
+            if (was.equals(mindustry.io.JsonIO.write(remote))) continue;
+            Log.info("Aurora: @ campaign rules from planet host (difficulty @)", pl.name, remote.difficulty);
+            // Copy into the same object: an open rules dialog keeps showing it — Копіюємо в той самий об'єкт: відкритий діалог правил і далі його показує
+            mindustry.io.JsonIO.copy(remote, pl.campaignRules);
+            pl.saveRules();
+            // We host a sector of this planet: apply now and tell our clients — Ми хостимо сектор цієї планети: застосувати зараз і сказати клієнтам
+            if (state.isGame() && state.isCampaign() && state.getPlanet() == pl && !net.client()) {
+                pl.campaignRules.apply(pl, state.rules);
+                if (net.server()) Call.setRules(state.rules);
+            }
+        }
+    }
+
+    // ---------- Removing players: only the planet host — Видалення гравців: лише хост планети ----------
+
+    static volatile String ownerUuid = "";
+    static volatile ObjectSet<String> ownerIps = new ObjectSet<>(), banUuids = new ObjectSet<>(), banIps = new ObjectSet<>();
+
+    /** Dev console (JS): not as a guest on someone else's planet (own planet and normal campaign are fine) — Консоль розробника (JS): не гостем на чужій планеті (своя планета й звичайна кампанія — можна). */
+    public static boolean consoleAllowed() {
+        return campaignSlot != slotGuest;
+    }
+
+    /** Abandoning a sector: in Aurora only the planet host — Покинути сектор: в Aurora лише власник планети. */
+    public static boolean mayAbandon() {
+        return !auroraSlot() || planetHost();
+    }
+
+    /** Planet host abandons a sector nobody plays (Authority side). False if someone plays it — Власник планети покидає сектор, де ніхто не грає. false, якщо там хтось грає. */
+    public static boolean abandonOnPlanet(Sector s) {
+        if (!planetHost()) return false;
+        boolean ok = AuroraAuthority.abandon(sid(s));
+        if (ok) refreshMap();
+        return ok;
+    }
+
+    /** Any Aurora session, for UI outside this class — Будь-яка сесія Aurora, для UI поза цим класом. */
+    public static boolean sessionActivePublic() {
+        return sessionActive();
+    }
+
+    /** We host an Aurora sector — Ми хостимо сектор Aurora. */
+    public static boolean hostingAurora() {
+        return sessionActive() && net.server();
+    }
+
+    static String plainIp(String ip) {
+        if (ip == null) return "";
+        if (ip.startsWith("/")) ip = ip.substring(1);
+        if (ip.startsWith("::ffff:")) ip = ip.substring(7);
+        return ip;
+    }
+
+    /**
+     * Is this player the planet host: we are him, or his uuid and IP match what Authority reports (uuid alone could be copied)
+     * — Чи цей гравець хост планети: ми — це він, або його uuid і IP збігаються з тим, що каже Authority (самий uuid можна скопіювати).
+     */
+    public static boolean isPlanetOwner(Player p) {
+        if (p == null) return false;
+        if (p.isLocal()) return planetHost();
+        if (p.con == null || ownerUuid.isEmpty()) return false;
+        return ownerUuid.equals(p.con.uuid) && ownerIps.contains(plainIp(p.con.address));
+    }
+
+    /**
+     * Server side: may this player kick / ban here. In Aurora only the planet host playing locally; as a client he removes
+     * players through his own Authority (removePlayer), never through the sector host.
+     * — На сервері: чи може цей гравець тут кікати / банити. В Aurora лише власник планети, що грає локально; як клієнт
+     * він видаляє гравців через свій Authority (removePlayer), а не через хоста сектора.
+     */
+    public static boolean mayRemove(Player p) {
+        return !hostingAurora() || (p != null && p.isLocal() && planetHost());
+    }
+
+    /** UI: show kick / ban buttons — UI: показувати кнопки кіку / бану. */
+    public static boolean canRemovePlayers() {
+        return !sessionActive() || planetHost();
+    }
+
+    /**
+     * Kick / ban button in the player list. Vanilla or our own sector: the usual admin request. Planet host as a client in
+     * someone's sector: straight into his own Authority (the sector host's next heartbeat throws the player out, <= 10 s).
+     * — Кнопка кіку / бану в списку гравців. Ваніла або свій сектор: звичайний адмін-запит. Власник планети клієнтом у чужому
+     * секторі: напряму у свій Authority (наступний heartbeat хоста сектора викине гравця, <= 10 с).
+     */
+    public static void removePlayer(Player user, boolean ban) {
+        if (!sessionActive() || !net.client()) {
+            Call.adminRequest(user, ban ? mindustry.net.Packets.AdminAction.ban : mindustry.net.Packets.AdminAction.kick, null);
+            return;
+        }
+        Sector s = current;
+        if (!planetHost() || s == null) {
+            ui.showInfoToast(tr("remove.owneronly"), 4f);
+            return;
+        }
+        String name = AuroraAuthority.removeInSector(sid(s), user.id, ban);
+        if (name == null) ui.showInfoToast(tr("remove.unknown"), 5f);
+        else ui.showInfoToast(tr(ban ? "remove.banned" : "remove.kicked", name), 5f);
+    }
+
+    static boolean planetBanned(Player p) {
+        if (p == null || p.con == null) return false;
+        return banUuids.contains(p.con.uuid) || banIps.contains(plainIp(p.con.address));
+    }
+
+    /** Planet-wide ban from our own sector: we are the planet host (mayRemove checked it) — Блок на всю планету з нашого сектора: ми власник планети (перевірив mayRemove). */
+    public static void planetBan(Player other) {
+        if (other == null || other.con == null || !planetHost()) return;
+        String uuid = other.con.uuid, ip = plainIp(other.con.address);
+        banUuids.add(uuid);
+        if (!ip.isEmpty()) banIps.add(ip);
+        AuroraAuthority.ban(uuid, ip, Strings.stripColors(other.name), "planet host");
+    }
+
+    /** Sector host: who is the planet host, who is banned; give admin / kick accordingly — Хост сектора: хто хост планети, хто заблокований; дати адмінку / кікнути. */
+    static void syncAdmin() {
+        if (!hostingAurora()) return;
+        mainExecutor.submit(() -> {
+            try {
+                Res o = get("/owner"), b = get("/bans");
+                if (o.code != 200 && b.code != 200) return; // old Authority — старий Authority
+                String uuid = ownerUuid;
+                ObjectSet<String> ips = ownerIps, bu = banUuids, bi = banIps;
+                if (o.code == 200) {
+                    JsonValue j = parse(o);
+                    uuid = j.getString("uuid", "");
+                    ips = new ObjectSet<>();
+                    for (JsonValue c = j.get("ips") == null ? null : j.get("ips").child; c != null; c = c.next) ips.add(c.asString());
+                }
+                if (b.code == 200) {
+                    JsonValue j = parse(b);
+                    bu = new ObjectSet<>();
+                    bi = new ObjectSet<>();
+                    for (JsonValue c = j.get("uuids") == null ? null : j.get("uuids").child; c != null; c = c.next) bu.add(c.asString());
+                    for (JsonValue c = j.get("ips") == null ? null : j.get("ips").child; c != null; c = c.next) bi.add(c.asString());
+                }
+                String fu = uuid;
+                ObjectSet<String> fi = ips, fbu = bu, fbi = bi;
+                Core.app.post(() -> {
+                    ownerUuid = fu;
+                    ownerIps = fi;
+                    banUuids = fbu;
+                    banIps = fbi;
+                    if (hostingAurora()) Groups.player.each(AuroraNet::checkPlayer);
+                });
+            } catch (Throwable t) {
+                Log.err("syncAdmin failed", t);
+            }
+        });
+    }
+
+    /** Kick a banned player, give the planet host admin — Кікнути заблокованого, дати хосту планети адмінку. */
+    static void checkPlayer(Player p) {
+        if (p.isLocal() || p.con == null) return;
+        if (planetBanned(p) && !isPlanetOwner(p)) {
+            p.kick(mindustry.net.Packets.KickReason.banned);
+        } else if (isPlanetOwner(p) && !p.admin) {
+            p.admin = true;
+        }
+    }
+
     // ---------- Shared items — Спільні ресурси ----------
 
     static volatile ItemSeq shared = new ItemSeq();
@@ -928,10 +1488,15 @@ public class AuroraNet {
     }
 
     public static void refreshItems() {
+        refreshItems(false);
+    }
+
+    /** fresh = Authority first asks the sector hosts for their current stock (≤1.5 s) — fresh = Authority спершу просить у хостів секторів їхній поточний склад (≤1.5 с). */
+    public static void refreshItems(boolean fresh) {
         if (!itemsActive()) return;
         mainExecutor.submit(() -> {
             try {
-                Res res = get("/items");
+                Res res = get(fresh ? "/items?fresh=1" : "/items");
                 if (res.code != 200) return;
                 ItemSeq seq = new ItemSeq();
                 for (JsonValue c = parse(res).child; c != null; c = c.next) {
@@ -939,13 +1504,21 @@ public class AuroraNet {
                     if (it != null) seq.set(it, c.asInt());
                 }
                 Core.app.post(() -> {
+                    // Rebuild the research items only when the counts changed — Перебудовуємо ресурси в дереві лише коли кількості змінились
+                    boolean changed = !sameItems(shared, seq);
                     shared = seq;
-                    if (ui.research.isShown()) ui.research.rebuildItems();
+                    if (changed && ui.research.isShown()) ui.research.rebuildItems();
                 });
             } catch (Throwable t) {
                 Log.err("refreshItems failed", t);
             }
         });
+    }
+
+    static boolean sameItems(ItemSeq a, ItemSeq b) {
+        if (a == null || b == null) return a == b;
+        for (Item it : content.items()) if (a.get(it) != b.get(it)) return false;
+        return true;
     }
 
     /**
@@ -954,17 +1527,39 @@ public class AuroraNet {
      * — Списання з підтвердженням: done(true) лише якщо Authority прийняв (200). 409 = не вистачає, помилка = нема зв'язку.
      * done виконується на головному потоці.
      */
-    public static void spendConfirmed(ObjectIntMap<Item> need, Boolc done) {
+    static String spendBody(ObjectIntMap<Item> need) {
+        return spendBody(need, null);
+    }
+
+    /** research = content being paid for: Authority checks the full cost and opens it — research = те, за що платимо: Authority перевіряє повну ціну й відкриває його. */
+    static String spendBody(ObjectIntMap<Item> need, String research) {
         StringBuilder items = new StringBuilder("{");
         for (var e : need) {
             if (items.length() > 1) items.append(',');
             items.append(js(e.key.name)).append(':').append(e.value);
         }
-        String body = "{\"id\":" + js(java.util.UUID.randomUUID().toString()) + ",\"items\":" + items.append('}') + "}";
+        String extra = research == null ? "" : ",\"research\":" + js(research) + ",\"by\":" + js(myName());
+        return "{\"id\":" + js(java.util.UUID.randomUUID().toString()) + ",\"items\":" + items.append('}') + extra + "}";
+    }
+
+    /** Spend on the calling (background) thread: answer code, or -1 = no connection — Списання в поточному (фоновому) потоці: код відповіді, або -1 = нема зв'язку. */
+    static int spendBlocking(ObjectIntMap<Item> need) {
+        try {
+            Res res = request("POST", "/spend", spendBody(need).getBytes(StandardCharsets.UTF_8));
+            if (res.code != 200) Log.warn("spend rejected: @", res.code);
+            return res.code;
+        } catch (Exception e) {
+            Log.err("spend failed", e);
+            return -1;
+        }
+    }
+
+    public static void spendConfirmed(ObjectIntMap<Item> need, String research, Boolc done) {
+        String body = spendBody(need, research);
         mainExecutor.submit(() -> {
             boolean ok = false;
             try {
-                Res res = request("POST", "/spend", "application/json", body.getBytes(StandardCharsets.UTF_8));
+                Res res = request("POST", "/spend", body.getBytes(StandardCharsets.UTF_8));
                 ok = res.code == 200;
                 if (!ok) Log.warn("spend rejected: @", res.code);
             } catch (Exception e) {
@@ -994,34 +1589,83 @@ public class AuroraNet {
      * Host: take queued spends, remove them from our core, ack, push the fresh stock. Runs every beat.
      * — Хост: забрати чергу списань, зняти з ядра, підтвердити, відправити свіжий склад. Кожен beat.
      */
+    /**
+     * Spend ops this host already took from its core. If an ack is lost, Authority sends the same op again;
+     * without this set every sync would take it again and drain the core.
+     * — Списання, які цей хост уже зняв з ядра. Якщо підтвердження загубилось, Authority надішле те саме знову;
+     * без цього набору кожна синхронізація знімала б його ще раз і спустошувала ядро.
+     */
+    static final ObjectSet<String> appliedOps = new ObjectSet<>();
+
     static void syncStock(Sector s) {
+        stockBusy = true;
         mainExecutor.submit(() -> {
             try {
                 Res r = get(sectorPath(s, "pending") + asMe());
                 JsonValue arr = r.code == 200 ? parse(r) : null;
                 Core.app.post(() -> {
-                    if (!hosting || current != s || !state.isGame() || state.rules.sector != s) return;
+                  try {
+                    if (!hosting || current != s || !state.isGame() || state.rules.sector != s) {
+                        stockBusy = false;
+                        return;
+                    }
                     var core = state.rules.defaultTeam.core();
                     StringBuilder acked = new StringBuilder();
+                    boolean appliedNew = false;
                     if (arr != null) {
+                        if (appliedOps.size > 2000) appliedOps.clear();
                         for (JsonValue c = arr.child; c != null; c = c.next) {
+                            String opId = c.getString("id");
                             Item it = content.item(c.getString("item"));
-                            if (it != null && core != null) core.items.remove(it, Math.min(c.getInt("amount"), core.items.get(it)));
+                            // Take each op only once, but always ack it again — Кожне списання знімаємо лише раз, але підтверджуємо щоразу
+                            // Op ids repeat across sectors (one spend split over several), so key by sector too — id списань повторюються між секторами (одна витрата на кілька), тож ключ ще й за сектором
+                            if (appliedOps.add(sid(s) + "/" + opId) && it != null && core != null) {
+                                core.items.remove(it, Math.min(c.getInt("amount"), core.items.get(it)));
+                                appliedNew = true;
+                            }
                             if (acked.length() > 0) acked.append(',');
-                            acked.append(c.getString("id"));
+                            acked.append(opId);
                         }
                     }
                     String body = stockJson();
-                    mainExecutor.submit(() -> {
+                    // New spends taken from the core: snapshot now, the save carries their ack (see below)
+                    // — Нові списання зняті з ядра: знімок зараз, сейв несе їхнє підтвердження (див. нижче)
+                    byte[][] pack = appliedNew ? snapshot(s) : null;
+                    if (pack != null) lastPush = Time.millis();
+                    boolean needSave = appliedNew;
+                    uploads.submit(() -> {
+                        // Order: stock -> then the ack. With new spends the ack rides on the save that already has them
+                        // (one request), so a crash can neither refund them nor charge them twice. Any failure: no ack,
+                        // the next sync repeats it (appliedOps keeps the core from being charged twice).
+                        // — Порядок: склад -> потім підтвердження. З новими списаннями підтвердження їде разом із сейвом, де вони вже є
+                        // (один запит), тож падіння не поверне їх і не зніме двічі. Будь-яка помилка: без підтвердження,
+                        // наступна синхронізація повторить (appliedOps не дасть зняти з ядра двічі).
                         try {
                             putBytes(sectorPath(s, "items") + asMe(), body.getBytes(StandardCharsets.UTF_8));
-                            if (acked.length() > 0) post(sectorPath(s, "ack") + asMe() + "&ids=" + q(acked.toString()));
+                            if (needSave) {
+                                if (pack == null) throw new RuntimeException("no snapshot");
+                                putBytes(sectorPath(s, "save") + asMe() + "&ops=" + q(acked.toString()), pack[0]);
+                                putBytes(sectorPath(s, "info") + asMe(), pack[1]);
+                                Log.info("Aurora: sector @ saved to Authority (spend)", sid(s));
+                            } else if (acked.length() > 0) {
+                                Res a = post(sectorPath(s, "ack") + asMe() + "&ids=" + q(acked.toString()));
+                                if (a.code != 200) Log.warn("Aurora: ack rejected @", a.code);
+                            }
                         } catch (Exception e) {
-                            Log.err("syncStock push failed", e);
+                            Log.err("syncStock upload failed", e);
+                            if (needSave) forcePush = true;
+                        } finally {
+                            stockBusy = false;
                         }
                     });
+                  } catch (Throwable t) {
+                    // Never leave the flag stuck, or the host would stop syncing — Ніколи не лишати прапорець, інакше хост перестане синхронізуватися
+                    stockBusy = false;
+                    Log.err("syncStock apply failed", t);
+                  }
                 });
             } catch (Throwable t) {
+                stockBusy = false;
                 Log.err("syncStock failed", t);
             }
         });
@@ -1032,7 +1676,7 @@ public class AuroraNet {
     /** Does Authority answer? (off the main thread) — Чи відповідає Authority? (не з головного потоку) */
     static boolean pingAuthority(int timeout) {
         try {
-            return request(authority(), "GET", "/sectors", null, null, timeout).code == 200;
+            return request(authority(), "GET", "/sectors", null, timeout).code == 200;
         } catch (Throwable e) {
             return false;
         }
@@ -1083,7 +1727,7 @@ public class AuroraNet {
         if (wasClient) netClient.disconnectQuietly();
         logic.reset();
         ui.planet.hide();
-        showGone("Aurora: господар планети зник.\nПовертаємось у головне меню.");
+        showGone(tr("gone.host"));
     }
 
     /** Quiet check: onChange runs on the main thread only if the state changed — Тиха перевірка: onChange лише якщо стан змінився. */
@@ -1111,25 +1755,32 @@ public class AuroraNet {
      * — Для списку серверів: чи є за цим IP планета Aurora, хоча сервер гри не відповідає (хост ще в меню)?
      * done отримує текст підпису, або null, якщо не Aurora. На головному потоці.
      */
+    /**
+     * Connect timeout for "is this an Aurora planet?" checks. ArcNet needs a TCP connect plus a registration round trip,
+     * which over a Tailscale relay from a phone can take longer than the old 2 s.
+     * — Тайм-аут підключення для перевірок "чи це планета Aurora?". ArcNet потребує TCP-підключення плюс обмін реєстрацією,
+     * а через ретранслятор Tailscale з телефона це буває довше за старі 2 с.
+     */
+    static final int PROBE_TIMEOUT = 6000;
+
     public static void probePlanet(String ip, Cons<String> done) {
-        String host = ip.indexOf(':') >= 0 && !ip.startsWith("[") ? "[" + ip + "]" : ip;
-        String base = "http://" + host + ":8443";
+        String base = AuroraWire.addr(ip.indexOf(':') >= 0 && !ip.startsWith("[") ? "[" + ip + "]" : ip);
         mainExecutor.submit(() -> {
             String text = null;
             quietProto.set(true);
             try {
-                Res mode = request(base, "GET", "/mode", null, null, 2000);
+                Res mode = request(base, "GET", "/mode", null, PROBE_TIMEOUT);
                 int theirs = mode.code == 426 ? remoteProtocol(base) : PROTOCOL;
                 if (mode.code == 401) {
-                    text = "[accent]Aurora[] — [scarlet]потрібен пароль[] (налаштування Aurora)";
+                    text = tr("probe.password");
                 } else if (mode.code == 426) {
-                    text = "[accent]Aurora[] — [scarlet]інша версія гри (" + (theirs > 0 ? theirs : "стара") + ", у тебе " + PROTOCOL + ")";
+                    text = tr("probe.version", theirs > 0 ? String.valueOf(theirs) : tr("probe.version.old"), String.valueOf(PROTOCOL));
                 } else {
                     if (mode.code == 200 && parse(mode).getBoolean("active", false)) {
                         int live = 0;
-                        Res s = request(base, "GET", "/sectors", null, null, 2000);
+                        Res s = request(base, "GET", "/sectors", null, PROBE_TIMEOUT);
                         if (s.code == 200) for (JsonValue c = parse(s).child; c != null; c = c.next) live++;
-                        text = "[accent]Aurora[] — планета відкрита\n[lightgray]" + (live == 0 ? "у секторах ще ніхто не грає" : "грають у секторах: " + live) + "\nнатисни, щоб зайти";
+                        text = tr("probe.open", live == 0 ? tr("probe.nobody") : tr("probe.playing", String.valueOf(live)));
                     }
                 }
             } catch (Throwable ignored) {
@@ -1150,17 +1801,16 @@ public class AuroraNet {
      * хост зараз в Aurora, або цей ip:port — живий Aurora-сектор.
      */
     public static void probeAndJoin(String ip, int port, Boolc done) {
-        String host = ip.indexOf(':') >= 0 && !ip.startsWith("[") ? "[" + ip + "]" : ip;
-        String direct = "http://" + host + ":8443";
+        String direct = AuroraWire.addr(ip.indexOf(':') >= 0 && !ip.startsWith("[") ? "[" + ip + "]" : ip);
         mainExecutor.submit(() -> {
             String found = null;
 
             try {
-                Res mode = request(direct, "GET", "/mode", null, null, 2000);
+                Res mode = request(direct, "GET", "/mode", null, PROBE_TIMEOUT);
                 if (mode.code == 200 && parse(mode).getBoolean("active", false)) {
                     found = direct;
                 } else if (mode.code == 200 || mode.code == 404) {
-                    Res res = request(direct, "GET", "/sectors", null, null, 2000);
+                    Res res = request(direct, "GET", "/sectors", null, PROBE_TIMEOUT);
                     if (res.code == 200) {
                         for (JsonValue c = parse(res).child; c != null; c = c.next) {
                             if (c.getInt("port", 0) == port) {
@@ -1178,9 +1828,9 @@ public class AuroraNet {
                 String saved = authority();
                 try {
                     if (!saved.equals(direct)) {
-                        Res res = request(saved, "GET", "/sectors", null, null, 2000);
+                        Res res = request(saved, "GET", "/sectors", null, PROBE_TIMEOUT);
                         if (res.code == 200) {
-                            String authHost = new URL(saved).getHost();
+                            String authHost = AuroraWire.host(saved);
                             for (JsonValue c = parse(res).child; c != null; c = c.next) {
                                 String hip = c.getString("ip", "");
                                 boolean loop = hip.equals("127.0.0.1") || hip.equals("localhost");
@@ -1233,10 +1883,17 @@ public class AuroraNet {
         Timer.schedule(() -> {
             if (sessionActive()) {
                 syncUnlocks();
+                syncRules();
+                syncAdmin();
                 refreshItems();
                 refreshMap();
             }
         }, 5f, 5f);
+        // While the research tree is open, refresh the shared stock every 2 s — Поки відкрите дерево досліджень, оновлюємо спільний склад кожні 2 с
+        Timer.schedule(() -> Core.app.post(() -> {
+            // Plain refresh: "fresh" (waking every host) only on open and after a spend — Звичайне оновлення: "fresh" (будить усіх хостів) лише при відкритті й після витрати
+            if (sessionActive() && ui != null && ui.research != null && ui.research.isShown()) refreshItems(false);
+        }), 2f, 2f);
         Runtime.getRuntime().addShutdownHook(new Thread(AuroraNet::shutdownWork, "aurora-shutdown"));
         Events.on(DisposeEvent.class, e -> shutdownWork());
 
@@ -1244,6 +1901,8 @@ public class AuroraNet {
         Events.on(WaveEvent.class, e -> pushNow(false, "wave"));
         Events.on(SectorCaptureEvent.class, e -> pushNow(true, "capture"));
         Events.on(SectorLaunchEvent.class, e -> pushNow(true, "launch"));
+        // Lost sector: upload the lost state, or the next host would load the old living base — Програний сектор: заливаємо стан програшу, інакше наступний хост завантажить стару живу базу
+        Events.on(SectorLoseEvent.class, e -> pushNow(true, "lose"));
         Events.on(LaunchItemEvent.class, e -> pushNow(false, "launch items"));
         Events.on(ResearchEvent.class, e -> pushNow(false, "research"));
 
@@ -1271,6 +1930,11 @@ public class AuroraNet {
             });
         });
 
+        // Joined our Aurora sector: banned -> out, planet host -> admin — Зайшов у наш сектор Aurora: заблокований -> геть, хост планети -> адмін
+        Events.on(PlayerJoin.class, e -> {
+            if (hostingAurora()) checkPlayer(e.player);
+        });
+
         // The sector we claimed has loaded: open our server — Сектор, який ми заклеймили, завантажився: відкриваємо свій сервер
         Events.on(WorldLoadEvent.class, e -> {
             if (!wantHost) return;
@@ -1278,6 +1942,7 @@ public class AuroraNet {
             try {
                 net.host(myPort());
                 player.admin = true;
+                syncAdmin();
                 Events.fire(new HostEvent());
                 startBeat();
                 Sector hs = current;
@@ -1290,9 +1955,9 @@ public class AuroraNet {
                 });
                 hostLive = true;
                 Time.runTask(60f, () -> {
-                    if (hosting && current == hs) syncStock(hs);
+                    if (hosting && current == hs && !stockBusy) syncStock(hs);
                 });
-                Time.runTask(120f, () -> selfCheck("старт", false));
+                Time.runTask(120f, () -> selfCheck(tr("selfcheck.start"), false));
             } catch (Exception ex) {
                 ui.showException("@server.error", ex);
             }

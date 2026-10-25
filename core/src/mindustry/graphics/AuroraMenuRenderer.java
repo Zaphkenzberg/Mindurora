@@ -12,6 +12,7 @@ import arc.scene.ui.layout.*;
 import arc.struct.*;
 import arc.util.*;
 import mindustry.content.*;
+import mindustry.ctype.*;
 import mindustry.game.*;
 import mindustry.graphics.g3d.*;
 import mindustry.type.*;
@@ -38,7 +39,7 @@ public class AuroraMenuRenderer implements PlanetRenderer.PlanetInterfaceRendere
     float zoomOffset;
     static final float autoSpin = 0.08f;
     /** Drag sensitivity: weaker on phones (touch deltas are big in pixels) — Чутливість перетягування: на телефоні слабша (дельти дотику великі в пікселях). */
-    static final float dragSensDesktop = 0.25f, dragSensMobile = 0.05f;
+    static final float dragSensDesktop = 0.25f, dragSensMobile = 0.00125f;
 
     // 3D cage: the same hex/pentagon grid as sectors (Goldberg polyhedron) — 3D-клітка: та сама сітка, що й сектори (Goldberg-поліедр)
     static final int cageSize = 1;          // 0 dodecahedron, 1 football (12 pent + 20 hex), 2 denser — 0 додекаедр, 1 м'яч (12 п'ятикутників + 20 шестикутників), 2 густіше
@@ -62,7 +63,8 @@ public class AuroraMenuRenderer implements PlanetRenderer.PlanetInterfaceRendere
     float occR;
 
     public AuroraMenuRenderer(){
-        params.planet = Planets.serpulo;
+        params.planet = menuPlanet();
+        registerLastPlanet();
         // drawUi makes the planet call renderSectors (Aurora sector state); orbits are hidden during render
         // — drawUi потрібен, щоб планета викликала renderSectors (стан секторів Aurora); орбіти ховаємо під час рендеру
         params.drawUi = true;
@@ -97,10 +99,36 @@ public class AuroraMenuRenderer implements PlanetRenderer.PlanetInterfaceRendere
         ty = new float[anchors.length * tetherSteps];
         tVis = new boolean[anchors.length * tetherSteps];
 
+        allocSectors();
+    }
+
+    /** Settings key: planet of the last played Aurora sector — Ключ налаштувань: планета останнього зіграного сектора Aurora. */
+    static final String lastPlanetKey = "aurora-menu-planet";
+    static boolean lastPlanetHooked;
+
+    /** Remembers the planet whenever an Aurora campaign sector loads (once per process) — Запам'ятовує планету щоразу, коли вантажиться сектор кампанії Aurora (раз на процес). */
+    static void registerLastPlanet(){
+        if(lastPlanetHooked) return;
+        lastPlanetHooked = true;
+        Events.on(EventType.WorldLoadEvent.class, e -> {
+            if(state.isCampaign() && auroraSlot() && state.rules.sector != null){
+                Core.settings.put(lastPlanetKey, state.rules.sector.planet.name);
+            }
+        });
+    }
+
+    /** Last played planet, Serpulo by default or if it has no sectors — Остання зіграна планета; Serpulo за замовчуванням або якщо в неї нема секторів. */
+    static Planet menuPlanet(){
+        Planet p = content.getByName(ContentType.planet, Core.settings.getString(lastPlanetKey, "serpulo"));
+        return p == null || p.sectors.isEmpty() ? Planets.serpulo : p;
+    }
+
+    void allocSectors(){
         int ns = params.planet.sectors.size;
         captured = new boolean[ns];
         attacked = new boolean[ns];
         infos = new SectorInfo[ns];
+        lastCap = lastAtt = -1;
     }
 
     // ---------- Aurora campaign state (own planet: saves2/ and c2- keys) — Стан кампанії Aurora (своя планета: saves2/ і ключі c2-) ----------
@@ -149,15 +177,16 @@ public class AuroraMenuRenderer implements PlanetRenderer.PlanetInterfaceRendere
         for(Sector sec : planet.sectors){
             // Everyone's bases in the normal color (Sharded) — Бази всіх гравців звичайним кольором (Sharded)
             boolean lb = captured[sec.id], rb = mindustry.AuroraNet.remoteBase(sec);
+            SectorInfo info = infos[sec.id];
+            boolean atk = lb && info != null ? info.attack : mindustry.AuroraNet.remoteAttack(sec);
+            boolean wv = lb && info != null ? info.waves : mindustry.AuroraNet.remoteWaves(sec);
             if(lb || rb){
-                planets.drawSelection(sec, Tmp.c1.set(mindustry.AuroraNet.baseColor).mul(0.8f).a(1f), 0.026f, -0.001f);
+                // Orange, blue while someone plays there — Помаранчева, синя, поки там хтось грає
+                planets.drawSelection(sec, Tmp.c1.set(mindustry.AuroraNet.frameColor(sec, atk, wv)).mul(0.8f).a(1f), 0.026f, -0.001f);
             }
 
-            // Live sectors: blue frame / blinking blue / blinking red — Живі сектори: синя рамка / блимання синім / блимання червоним
-            SectorInfo info = infos[sec.id];
-            mindustry.AuroraNet.drawLiveSector(planets, sec, lb || rb,
-                lb && info != null ? info.waves : mindustry.AuroraNet.remoteWaves(sec),
-                lb && info != null ? info.attack : mindustry.AuroraNet.remoteAttack(sec), 1f);
+            // Live sectors: blue frame while capturing / blinking red on attack — Живі сектори: синя рамка при захопленні / червоне блимання при атаці
+            mindustry.AuroraNet.drawLiveSector(planets, sec, lb || rb, wv, atk, 1f);
         }
 
         planets.batch.flush(Gl.triangles);
@@ -199,6 +228,14 @@ public class AuroraMenuRenderer implements PlanetRenderer.PlanetInterfaceRendere
         params.viewW = w;
         params.viewH = h;
 
+        // Switch to the last played planet (Serpulo / Erekir) and rescan at once — Перемикаємось на останню зіграну планету (Serpulo / Erekir) і одразу перечитуємо
+        Planet want = menuPlanet();
+        if(want != params.planet){
+            params.planet = want;
+            allocSectors();
+            scanTimer = 9999f;
+        }
+
         // Re-read Aurora sector state every 5 s — Раз на 5 с перечитуємо стан секторів Aurora
         scanTimer += Time.delta;
         if(scanTimer > 60f * 5f){
@@ -210,12 +247,12 @@ public class AuroraMenuRenderer implements PlanetRenderer.PlanetInterfaceRendere
             }
         }
 
-        // No orbit rings on the menu background (restored after render) — Орбіти на фоні меню не потрібні (відновлюємо після рендеру)
+        // Only the menu planet's orbit: shows where it is moving (restored after render) — Лише орбіта планети меню: видно, куди вона рухається (відновлюємо після рендеру)
         var all = content.planets();
         if(orbits == null || orbits.length != all.size) orbits = new boolean[all.size];
         for(int i = 0; i < all.size; i++){
             orbits[i] = all.get(i).drawOrbit;
-            all.get(i).drawOrbit = false;
+            all.get(i).drawOrbit = orbits[i] && all.get(i) == params.planet;
         }
 
         Draw.flush();

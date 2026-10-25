@@ -147,7 +147,8 @@ public class PlayerListFragment{
                 imageOverColor = Color.lightGray;
             }};
 
-            if(net.server() || (player.admin && (!user.admin || user == player))){
+            // AURORA: the planet host gets the menu in any sector of his planet — власник планети має меню в будь-якому секторі своєї планети
+            if(net.server() || (player.admin && (!user.admin || user == player)) || (mindustry.AuroraNet.sessionActivePublic() && mindustry.AuroraNet.planetHost())){
                 button.add().growY();
 
                 if(allowTeamSwitch || user != player){
@@ -167,17 +168,20 @@ public class PlayerListFragment{
                         dialog.cont.pane(t -> {
                             t.defaults().size(220f, 55f).pad(3f);
 
-                            if(user != player){
+                            // AURORA: kick / ban only for the planet host — Кік / бан лише для хоста планети
+                            if(user != player && mindustry.AuroraNet.canRemovePlayers()){
                                 t.button("@player.ban", Icon.hammer, bstyle, () -> {
-                                    ui.showConfirm("@confirm", Core.bundle.format("confirmban",  user.name()), () -> Call.adminRequest(user, AdminAction.ban, null));
+                                    ui.showConfirm("@confirm", Core.bundle.format("confirmban",  user.name()), () -> mindustry.AuroraNet.removePlayer(user, true));
                                     dialog.hide();
                                 }).row();
 
                                 t.button("@player.kick", Icon.cancel, bstyle, () -> {
-                                    ui.showConfirm("@confirm", Core.bundle.format("confirmkick",  user.name()), () -> Call.adminRequest(user, AdminAction.kick, null));
+                                    ui.showConfirm("@confirm", Core.bundle.format("confirmkick",  user.name()), () -> mindustry.AuroraNet.removePlayer(user, false));
                                     dialog.hide();
                                 }).row();
 
+                            }
+                            if(user != player){
                                 t.button("@player.trace", Icon.zoom, bstyle, () -> {
                                     Call.adminRequest(user, AdminAction.trace, null);
                                     dialog.hide();
@@ -242,7 +246,7 @@ public class PlayerListFragment{
 
                     }).size(h);
                 }
-            }else if(!user.isLocal() && !user.admin && net.client() && Groups.player.size() >= 3 && player.team() == user.team()){ //votekick
+            }else if(!user.isLocal() && !user.admin && net.client() && Groups.player.size() >= 3 && player.team() == user.team() && !mindustry.AuroraNet.sessionActivePublic()){ //votekick (not in Aurora — не в Aurora)
                 button.add().growY();
 
                 button.button(Icon.hammer, ustyle,
