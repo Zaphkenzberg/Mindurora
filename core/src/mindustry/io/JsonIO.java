@@ -44,6 +44,76 @@ public class JsonIO{
         }
     };
 
+    /**
+     * AURORA: the same serializers as {@link #json}, but "class" tags are never read, so data written by other players
+     * (sector info, campaign rules) can't make the game create arbitrary classes. Main thread only.
+     * — AURORA: ті самі серіалізатори, що й {@link #json}, але теги "class" ніколи не читаються, тож дані інших гравців
+     * (інформація про сектор, правила кампанії) не можуть змусити гру створити довільний клас. Лише головний потік.
+     */
+    public static final Json safeJson = new Json(){
+        {
+            apply(this);
+            setTypeName(null);
+        }
+
+        @Override
+        public void writeValue(Object value, Class knownType, Class elementType){
+            if(value instanceof MappableContent c){
+                try{
+                    getWriter().value(c.name);
+                }catch(IOException e){
+                    throw new RuntimeException(e);
+                }
+            }else{
+                super.writeValue(value, knownType, elementType);
+            }
+        }
+
+        @Override
+        protected String convertToString(Object object){
+            if(object instanceof MappableContent c) return c.name;
+            return super.convertToString(object);
+        }
+    };
+
+    /** AURORA: deepest nesting allowed in data from other players — Найглибша вкладеність, дозволена в даних інших гравців. */
+    public static final int maxRemoteDepth = 32;
+
+    /** AURORA: nesting depth of a parsed tree, without recursion — Глибина вкладеності розібраного дерева, без рекурсії. */
+    public static int depth(JsonValue root){
+        int max = 0;
+        arc.struct.Seq<JsonValue> stack = new arc.struct.Seq<>();
+        arc.struct.IntSeq depths = new arc.struct.IntSeq();
+        stack.add(root);
+        depths.add(1);
+        while(!stack.isEmpty()){
+            JsonValue v = stack.pop();
+            int d = depths.pop();
+            if(d > max) max = d;
+            if(max > maxRemoteDepth) return max;
+            for(JsonValue c = v.child; c != null; c = c.next){
+                stack.add(c);
+                depths.add(d + 1);
+            }
+        }
+        return max;
+    }
+
+    /**
+     * AURORA: read data that came from another player: plain JSON tree first (no recursion), depth checked, then mapped
+     * with {@link #safeJson}. Throws on anything suspicious.
+     * — AURORA: читання даних від іншого гравця: спершу просте JSON-дерево (без рекурсії), перевірка глибини, потім
+     * перетворення через {@link #safeJson}. Кидає виняток на будь-що підозріле.
+     */
+    public static <T> T readRemote(Class<T> type, JsonValue value){
+        if(depth(value) > maxRemoteDepth) throw new SerializationException("Data nested too deep");
+        return safeJson.readValue(type, null, value);
+    }
+
+    public static <T> T readRemote(Class<T> type, String text){
+        return readRemote(type, new JsonReader().parse(text));
+    }
+
     public static void writeBytes(Object value, Class<?> elementType, DataOutputStream output){
         json.setWriter(new UBJsonWriter(output));
         json.writeValue(value, value == null ? null : value.getClass(), elementType);

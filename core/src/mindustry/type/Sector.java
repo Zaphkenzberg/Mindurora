@@ -66,7 +66,8 @@ public class Sector{
 
     /** AURORA: restore info received from Authority — Відновити info, отримане з Authority. */
     public void importInfo(String json){
-        info = mindustry.io.JsonIO.json.fromJson(SectorInfo.class, json);
+        // Written by another player: no class tags, limited depth — Записано іншим гравцем: без тегів класів, обмежена глибина
+        info = mindustry.io.JsonIO.readRemote(SectorInfo.class, json);
         saveInfo();
     }
 

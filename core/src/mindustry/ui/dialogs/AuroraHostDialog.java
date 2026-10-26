@@ -52,7 +52,7 @@ public class AuroraHostDialog extends BaseDialog{
 
             // Password (X-Aurora-Token) — Пароль (X-Aurora-Token)
             t.add(AuroraNet.tr("host.password"));
-            TextField f = t.field(Core.settings.getString("aurora-token", ""), v -> Core.settings.put("aurora-token", v.trim())).width(260f).get();
+            TextField f = t.field(AuroraNet.hostToken(), AuroraNet::setHostToken).width(260f).get(); // this planet's own password — власний пароль цієї планети
             f.setMaxLength(40);
             t.row();
             t.add(AuroraNet.tr("host.password.hint")).colspan(2).row();

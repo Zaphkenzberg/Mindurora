@@ -140,29 +140,70 @@ public class AuroraWire {
     /** Glues frames back into messages, per connection — Склеює кадри назад у повідомлення, окремо для кожного з'єднання. */
     public static class Assembler {
         final ConcurrentHashMap<Long, ByteArrayOutputStream> parts = new ConcurrentHashMap<>();
-        final int max;
+        final int max, maxParts;
+        /** Bytes buffered by every Assembler sharing it (null = no global limit) — Байти в буферах усіх Assembler, що його ділять (null = без загального ліміту). */
+        final java.util.concurrent.atomic.AtomicLong shared;
+        final long sharedMax;
+        long mine;
 
         public Assembler(int max) {
+            this(max, 64, null, 0);
+        }
+
+        /**
+         * max: one message; maxParts: unfinished messages at once; shared/sharedMax: bytes buffered across all connections.
+         * Exceeding any of them throws, and the caller closes the connection.
+         * — max: одне повідомлення; maxParts: незавершених повідомлень одночасно; shared/sharedMax: байти в буферах усіх з'єднань.
+         * Перевищення будь-чого кидає виняток, і викликач закриває з'єднання.
+         */
+        public Assembler(int max, int maxParts, java.util.concurrent.atomic.AtomicLong shared, long sharedMax) {
             this.max = max;
+            this.maxParts = maxParts;
+            this.shared = shared;
+            this.sharedMax = sharedMax;
         }
 
         /** Full message when its last frame arrived, else null — Повне повідомлення, коли прийшов останній кадр, інакше null. */
-        public byte[] add(Frame f) throws IOException {
+        public synchronized byte[] add(Frame f) throws IOException {
             long key = ((long) f.kind << 32) | (f.id & 0xffffffffL);
             ByteArrayOutputStream o = parts.get(key);
             if (o == null && !f.more) return f.data;
             if (o == null) {
-                if (parts.size() > 64) throw new IOException("too many unfinished messages");
+                if (parts.size() >= maxParts) throw new IOException("too many unfinished messages");
                 parts.put(key, o = new ByteArrayOutputStream());
             }
             if (o.size() + f.data.length > max) {
-                parts.remove(key);
+                drop(key, o);
                 throw new IOException("message too large");
             }
+            if (shared != null && shared.addAndGet(f.data.length) > sharedMax) {
+                shared.addAndGet(-f.data.length);
+                drop(key, o);
+                throw new IOException("server busy: too much data being received");
+            }
+            mine += f.data.length;
             o.write(f.data);
             if (f.more) return null;
-            parts.remove(key);
+            drop(key, o);
             return o.toByteArray();
+        }
+
+        void drop(long key, ByteArrayOutputStream o) {
+            parts.remove(key);
+            release(o.size());
+        }
+
+        void release(long n) {
+            if (shared == null || n <= 0) return;
+            n = Math.min(n, mine);
+            mine -= n;
+            shared.addAndGet(-n);
+        }
+
+        /** Connection closed: give back whatever it still holds — З'єднання закрите: повернути все, що воно ще тримає. */
+        public synchronized void clear() {
+            parts.clear();
+            release(mine);
         }
     }
 
@@ -325,12 +366,18 @@ public class AuroraWire {
         links.clear();
     }
 
+    /** Bytes of unfinished answers across all client links, and the cap — Байти незавершених відповідей на всіх клієнтських з'єднаннях і межа. */
+    static final java.util.concurrent.atomic.AtomicLong clientAssembling = new java.util.concurrent.atomic.AtomicLong();
+    static final long CLIENT_ASSEMBLING_MAX = MAX_MESSAGE + 32L * 1024 * 1024;
+
     static class Link {
         final String host;
         final int port;
         final ConcurrentHashMap<Integer, CompletableFuture<byte[]>> waiting = new ConcurrentHashMap<>();
         final AtomicInteger ids = new AtomicInteger();
-        final Assembler asm = new Assembler(MAX_MESSAGE);
+        // A few unfinished answers per link and a cap across all links: a hostile Authority can't fill our memory
+        // — Кілька незавершених відповідей на з'єднання і межа на всі з'єднання: ворожий Authority не заб'є нам пам'ять
+        final Assembler asm = new Assembler(MAX_MESSAGE, 4, clientAssembling, CLIENT_ASSEMBLING_MAX);
         Client client;
 
         Link(String host, int port) {
@@ -346,6 +393,8 @@ public class AuroraWire {
                 @Override
                 public void received(Connection connection, Object object) {
                     if (!(object instanceof Frame f) || f.kind != RESP) return;
+                    // Only answers to requests we are waiting for — Лише відповіді на запити, на які ми чекаємо
+                    if (!waiting.containsKey(f.id)) return;
                     try {
                         byte[] full = asm.add(f);
                         if (full == null) return;
@@ -359,6 +408,7 @@ public class AuroraWire {
 
                 @Override
                 public void disconnected(Connection connection, DcReason reason) {
+                    asm.clear();
                     failAll(new SocketException("Aurora: Authority connection closed (" + reason + ")"));
                 }
             });

@@ -98,24 +98,32 @@ public class NetworkIO{
     public static ByteBuffer writeServerData(){
         String name = (headless ? Config.serverName.string() : player.name);
         String description = headless && !Config.desc.string().equals("off") ? Config.desc.string() : "";
-        String map = state.map.name();
+        // AURORA: an Aurora sector tells where its planet's Authority is, so friends who find it on LAN can join the planet
+        // — Сектор Aurora каже, де Authority його планети, щоб друзі, які знайшли його в LAN, могли зайти на планету
+        if(mindustry.AuroraNet.hostingAurora()) description = mindustry.AuroraNet.advertise(description);
+        return writeServerData(name, state.map.name(), Core.settings.getInt("totalPlayers", Groups.player.size()), state.wave,
+            state.rules.mode().ordinal(), netServer.admins.getPlayerLimit(), description,
+            state.rules.modeName == null ? "" : state.rules.modeName, Core.settings.getInt("port", port));
+    }
 
+    /** AURORA: server info with given values (the planet answers LAN discovery with it) — Інформація про сервер із заданими значеннями (нею планета відповідає на пошук у LAN). */
+    public static ByteBuffer writeServerData(String name, String map, int players, int wave, int mode, int limit, String description, String modeName, int hostPort){
         ByteBuffer buffer = ByteBuffer.allocate(500);
 
         writeString(buffer, name, 100);
         writeString(buffer, map, 64);
 
-        buffer.putInt(Core.settings.getInt("totalPlayers", Groups.player.size()));
-        buffer.putInt(state.wave);
+        buffer.putInt(players);
+        buffer.putInt(wave);
         buffer.putInt(Version.build);
         writeString(buffer, Version.type);
 
-        buffer.put((byte)state.rules.mode().ordinal());
-        buffer.putInt(netServer.admins.getPlayerLimit());
+        buffer.put((byte)mode);
+        buffer.putInt(limit);
 
         writeString(buffer, description, 100);
-        writeString(buffer, state.rules.modeName == null ? "" : state.rules.modeName, 50);
-        buffer.putShort((short)Core.settings.getInt("port", port));
+        writeString(buffer, modeName, 50);
+        buffer.putShort((short)hostPort);
         return buffer;
     }
 
