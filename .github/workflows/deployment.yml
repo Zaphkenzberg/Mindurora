@@ -26,8 +26,10 @@ jobs:
         distribution: temurin
         java-version: 17
 
-    - name: Set up Android SDK
-      uses: android-actions/setup-android@v3
+    # No separate Android setup: GitHub's Ubuntu runner already has the Android SDK (ANDROID_HOME) with licenses accepted.
+    # (android-actions/setup-android@v3 fails: it asks for the long-removed 'tools' package.)
+    # — Окремого встановлення Android нема: на Ubuntu-раннері GitHub Android SDK уже є (ANDROID_HOME) з прийнятими ліцензіями.
+    # (android-actions/setup-android@v3 падає: просить давно прибраний пакет 'tools'.)
 
     - name: Set up Gradle
       uses: gradle/actions/setup-gradle@v4
