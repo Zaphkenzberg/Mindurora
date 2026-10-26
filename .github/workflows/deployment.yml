@@ -32,6 +32,17 @@ jobs:
     - name: Set up Gradle
       uses: gradle/actions/setup-gradle@v4
 
+    # Arc (Anuke's engine) at the exact commit from gradle.properties, next to the repo: the build then compiles it
+    # from source (settings.gradle includeBuild '../Arc'). JitPack has no build of this commit.
+    # — Arc (рушій Anuke) на точному коміті з gradle.properties, поруч із репо: збірка компілює його з коду
+    # (settings.gradle includeBuild '../Arc'). На JitPack збірки цього коміту нема.
+    - name: Get Arc
+      run: |
+        ARC_HASH=$(grep '^archash=' gradle.properties | cut -d= -f2 | tr -d '[:space:]')
+        echo "Arc commit: $ARC_HASH"
+        git clone https://github.com/Anuken/Arc ../Arc
+        git -C ../Arc checkout "$ARC_HASH"
+
     # 152 = the Mindustry build AURORA is based on: keeps multiplayer compatibility with v152
     # — 152 = збірка Mindustry, на якій стоїть AURORA: зберігає мережеву сумісність з v152
     - name: Build jar and APK
