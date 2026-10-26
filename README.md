@@ -1,3 +1,29 @@
+# AURORA — shared campaign for Mindustry
+
+**Unofficial fork** of [Mindustry](https://github.com/Anuken/Mindustry) by Anuke, licensed under GPL-3.0.
+Modified by Zaph since July 2026. Not affiliated with or endorsed by Anuke.
+Please report AURORA bugs here, not to the official Mindustry repository.
+
+## What AURORA adds
+- **Shared planet:** friends play one campaign together. The planet host runs the Authority server
+  in their game; everyone else joins as a guest and hosts or joins sectors.
+- Shared research and shared resources across all sectors; sectors keep producing while nobody plays them.
+- Planet rules and difficulty set by the planet host; only the planet host can kick, ban or abandon sectors.
+- Harder difficulties (Apocalypse, Nightmare), day/night mode, free landing.
+- Languages: English, Ukrainian, Russian, Polish.
+
+## How to play together
+1. The planet host opens **Aurora** in the main menu. The Authority starts on port **8443**.
+2. Friends: **Play → Join Game** and enter the host's address
+   (on the same LAN the planet also shows up in **Local servers**).
+3. Over the internet, use [Tailscale](https://tailscale.com/) (or another VPN): Authority only accepts LAN and Tailscale addresses.
+
+**Windows:** if friends can't find you, set your network to **Private** (Settings → Network → your network),
+and allow Java through the firewall when Windows asks.
+
+## Building
+Same as Mindustry (see below). For a numbered build: `gradlew desktop:dist -Pbuildversion=152`.
+
 ![Logo](core/assets-raw/sprites/ui/logo.png)
 
 [![Build Status](https://github.com/Anuken/Mindustry/workflows/Tests/badge.svg?event=push)](https://github.com/Anuken/Mindustry/actions)
