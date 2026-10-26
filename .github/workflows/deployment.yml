@@ -47,10 +47,19 @@ jobs:
 
     # 152 = the Mindustry build AURORA is based on: keeps multiplayer compatibility with v152
     # — 152 = збірка Mindustry, на якій стоїть AURORA: зберігає мережеву сумісність з v152
-    - name: Build jar and APK
+    # Separate Gradle runs: in one run R8 did not find android's merged_java_res/debug/base.jar.
+    # — Окремі запуски Gradle: в одному запуску R8 не знаходив android merged_java_res/debug/base.jar.
+    - name: Build jar
       run: |
         chmod +x gradlew
-        ./gradlew desktop:dist android:assembleDebug -Pbuildversion=152 --stacktrace
+        ./gradlew desktop:dist -Pbuildversion=152 --stacktrace
+
+    - name: Build APK
+      run: |
+        ./gradlew android:assembleDebug -Pbuildversion=152 --no-build-cache --stacktrace || {
+          echo "::group::merged_java_res"; find android/build/intermediates/merged_java_res -maxdepth 3 -ls; echo "::endgroup::"
+          exit 1
+        }
 
     - name: Collect files
       run: |
