@@ -137,11 +137,18 @@ dependencies{
 }
 
 task copyAndroidNatives(){
-    configurations.natives.files.each{ jar ->
-        copy{
-            from zipTree(jar)
-            into file("libs/")
-            include "**"
+    def arc = new File(rootDir.parent, "Arc/natives")
+    if(arc.exists()){
+        copy { from new File(arc, "natives-android/libs"); into file("libs/") }
+        copy { from new File(arc,"natives-freetype-android/libs"); into file("libs/") }
+
+    } else {
+        configurations.natives.files.each { jar ->
+            copy {
+                from zipTree(jar)
+                into file("libs/")
+                include "**"
+            }
         }
     }
 }
