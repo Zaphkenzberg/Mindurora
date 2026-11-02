@@ -233,6 +233,19 @@ public abstract class UnlockableContent extends MappableContent{
         }
     }
 
+    /**
+     * AURORA: like quietUnlock, but checks only the local flag. quietUnlock asks unlocked(), which on a multiplayer client
+     * is already true when the host has it, so the local unlock was never saved and the node stayed locked later.
+     * — Як quietUnlock, але дивиться лише на локальний прапорець. quietUnlock питає unlocked(), а він у клієнта мультиплеєра
+     * вже true, якщо це є в хоста, тож локальне відкриття не зберігалось і вузол потім лишався закритим.
+     */
+    public void quietUnlockLocal(){
+        if(!unlocked && !alwaysUnlocked){
+            unlocked = true;
+            Core.settings.put(unlockKey(), true);
+        }
+    }
+
     public boolean unlockedNowHost(){
         return !state.isCampaign() || unlockedHost();
     }

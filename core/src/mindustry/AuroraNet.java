@@ -1387,7 +1387,7 @@ public class AuroraNet {
             } else {
                 // Bulk sync (first join): no flood of toasts — Масова синхронізація (перший вхід): без лавини сповіщень
                 for (var u : fresh) {
-                    u.quietUnlock();
+                    u.quietUnlockLocal(); // not quietUnlock: on a sector client that would skip it — не quietUnlock: у клієнта сектора той пропустив би
                     if (net.server()) Call.researched(u);
                 }
                 // One event so the build menu and tech tree rebuild — Одна подія, щоб перебудувались меню будівництва й дерево

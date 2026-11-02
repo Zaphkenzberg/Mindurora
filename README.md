@@ -10,7 +10,41 @@ Please report AURORA bugs here, not to the official Mindustry repository.
 - Shared research and shared resources across all sectors; sectors keep producing while nobody plays them.
 - Planet rules and difficulty set by the planet host; only the planet host can kick, ban or abandon sectors.
 - Harder difficulties (Apocalypse, Nightmare), day/night mode, free landing.
+- **Planet chat:** write `/p message` in the chat and everyone on the planet sees it, from any sector,
+  tagged with the planet it came from (`[Serpulo]` orange, `[Erekir]` red).
+- **Processors:** more building filters for `ulocate building` (see below).
 - Languages: English, Ukrainian, Russian, Polish.
+
+## Processor changes: `ulocate building` filters
+`ulocate building <filter> enemy @copper outX outY found building` can now find many more kinds of buildings.
+The text in the right column is the hint the game shows when you hover over (or long-press) the filter.
+
+| Filter | In-game hint | Buildings | |
+|---|---|---|---|
+| `core` | Any core. | cores | vanilla |
+| `storage` | Storage building, e.g. Vault. Also launch and landing pads. | containers, vaults, **launch pads, landing pads** | extended |
+| `generator` | Buildings that generate power. | generators, **solar panels** | extended |
+| `turret` | Any turret. | turrets | vanilla |
+| `factory` | Buildings that transform resources. | crafters, **separators** | extended |
+| `ufactory` | Unit factories and reconstructors. | unit factories, reconstructors | **new** |
+| `repair` | Repair points. | repair points / turrets (repair units) | vanilla |
+| `brepair` | Buildings that repair other buildings, e.g. Mender, Regen Projector. | menders, mend projectors, regen projectors | **new** |
+| `battery` | Any battery. | batteries | vanilla |
+| `reactor` | Impact/Thorium reactor. | reactors | vanilla |
+| `drill` | Drills and pumps. | drills, beam drills, wall crafters, **pumps** | extended |
+| `shield` | Force projectors. | force projectors | vanilla filter, new hint |
+| `wall` | Walls and shock mines. | walls, **shock mines** | first AURORA change (Oct 2025), extended |
+| `overdrive` | Overdrive projectors. | overdrive projectors / domes | **new** |
+| `logic` | Logic blocks: processors, displays, memory, switches, messages, canvases. | all logic blocks | **new** |
+| `powernode` | Power nodes, beam nodes and diodes. | power nodes, beam nodes, battery diodes | **new** |
+| `transfer` | Item, liquid and payload transport. | conveyors, junctions, bridges, routers, sorters, overflow gates, mass drivers, unloaders, incinerators, conduits, liquid routers/junctions, payload conveyors | **new** |
+
+Hints are translated into English, Ukrainian, Russian and Polish.
+
+**Side effects to know about:**
+- Solar panels have the `generator` flag again, so enemy AI treats them like any other generator
+  (vanilla removed it so enemies hit solar panels last).
+- The internal flag `blockRepair` is replaced by `brepair`; mods that use `BlockFlag.blockRepair` will not compile against AURORA.
 
 ## How to play together
 1. The planet host opens **Aurora** in the main menu. The Authority starts on port **8443**.
