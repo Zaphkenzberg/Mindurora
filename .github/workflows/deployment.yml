@@ -63,7 +63,14 @@ jobs:
         KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
       run: |
         if [ -z "$KEYSTORE_BASE64" ]; then echo "::error::secret KEYSTORE_BASE64 is missing"; exit 1; fi
-        echo "$KEYSTORE_BASE64" | base64 -d > ../bekeystore.jks
+        # A pasted secret can carry line breaks / spaces (Windows clipboard adds CRLF): drop them before decoding
+        # — Вставлений секрет може мати переноси / пробіли (буфер Windows додає CRLF): прибираємо їх перед декодуванням
+        CLEAN=$(printf '%s' "$KEYSTORE_BASE64" | tr -d ' \r\n\t')
+        if ! printf '%s' "$CLEAN" | base64 -d > ../bekeystore.jks 2>/dev/null; then
+          echo "::error::KEYSTORE_BASE64 is not valid base64 (${#CLEAN} chars). Copy it again with the PowerShell command and replace the secret."
+          exit 1
+        fi
+        echo "keystore: $(stat -c %s ../bekeystore.jks) bytes"
 
     - name: Build APK
       env:
