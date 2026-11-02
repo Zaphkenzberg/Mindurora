@@ -385,6 +385,10 @@ public class AuroraAuthority {
         linksPerIp.clear();
         connIp.clear();
         buckets.clear();
+        chatBuckets.clear();
+        synchronized (chatLock) {
+            chat.clear();
+        }
     }
 
     // ---------- Disk — Диск ----------
@@ -685,6 +689,12 @@ public class AuroraAuthority {
 
             } else if (m.equals("POST") && p.length == 2 && path.equals("spend")) {
                 spend(ex);
+
+            } else if (p.length == 2 && path.equals("chat")) {
+                // Planet chat: everyone on the planet, from any sector — Чат планети: усі на планеті, з будь-якого сектора
+                if (get) json(ex, 200, chatJson(Strings.parseLong(query(uri, "since"), -1)));
+                else if (m.equals("POST")) chatPost(ex, query(uri, "player"));
+                else send(ex, 404, "");
 
             } else {
                 send(ex, 404, "");
@@ -1530,6 +1540,95 @@ public class AuroraAuthority {
             for (String sec : per.keySet()) wake(sec);
         }
         send(ex, 200, "");
+    }
+
+    // ---------- Planet chat — Чат планети ----------
+
+    /** Messages kept for players who come later, and the longest message — Скільки повідомлень тримаємо для тих, хто прийде пізніше, і найдовше повідомлення. */
+    static final int CHAT_KEEP = 50, CHAT_TEXT = 200, CHAT_NAME = 40;
+    /** What a newcomer (since < 0) gets from the history — Скільки історії отримує новенький (since < 0). */
+    static final int CHAT_NEWCOMER = 10;
+    /** Messages per second per address, and the burst allowed — Повідомлень на секунду з однієї адреси і дозволений сплеск. */
+    static final float CHAT_RATE = 0.5f, CHAT_BURST = 5f;
+    /** {seq, name, sector, text}, oldest first. Memory only: the chat starts empty after a restart — {номер, ім'я, сектор, текст}, найстаріші спершу. Лише в пам'яті: після перезапуску чат порожній. */
+    static final ArrayDeque<String[]> chat = new ArrayDeque<>();
+    static long chatSeq;
+    static final Object chatLock = new Object();
+    /** ip -> {tokens, last refill ms}, like buckets — ip -> {токени, останнє поповнення мс}, як buckets. */
+    static final ConcurrentHashMap<String, double[]> chatBuckets = new ConcurrentHashMap<>();
+
+    /** POST /chat?player=uuid {"name","sector","text"}: a message to everyone on the planet — повідомлення всім на планеті. */
+    static void chatPost(Exchange ex, String player) throws IOException {
+        if (removed(player)) {
+            json(ex, 403, removedJson(player));
+            return;
+        }
+        if (!fromThisPc(ex) && !allowChat(plainAddr(ex.getRemoteAddress().getAddress()))) {
+            send(ex, 429, ""); // too often — занадто часто
+            return;
+        }
+        JsonValue j = new JsonReader().parse(new String(readBody(ex), StandardCharsets.UTF_8));
+        String text = chatClean(j.getString("text", ""), CHAT_TEXT);
+        String name = chatClean(j.getString("name", ""), CHAT_NAME);
+        String sector = j.getString("sector", "");
+        if (!validSector(sector)) sector = "";
+        if (text.isEmpty()) {
+            send(ex, 400, "");
+            return;
+        }
+        if (name.isEmpty()) name = "?";
+        long seq;
+        synchronized (chatLock) {
+            seq = ++chatSeq;
+            chat.addLast(new String[]{String.valueOf(seq), name, sector, text});
+            while (chat.size() > CHAT_KEEP) chat.removeFirst();
+        }
+        json(ex, 200, "{\"seq\":" + seq + "}");
+    }
+
+    /**
+     * GET /chat?since=N: {"seq":last, "msgs":[...]} with messages after N. since < 0 (just joined): the last few.
+     * since above our counter (Authority restarted, counter from zero): everything we have.
+     * — Повідомлення після N. since < 0 (щойно зайшов): кілька останніх. since більший за наш лічильник
+     * (Authority перезапустився, лічильник з нуля): усе, що є.
+     */
+    static String chatJson(long since) {
+        StringBuilder sb = new StringBuilder();
+        synchronized (chatLock) {
+            if (since > chatSeq) since = 0;
+            sb.append("{\"seq\":").append(chatSeq).append(",\"msgs\":[");
+            int skip = since < 0 ? Math.max(0, chat.size() - CHAT_NEWCOMER) : 0, i = 0;
+            boolean first = true;
+            for (String[] m : chat) {
+                if (i++ < skip) continue;
+                if (since >= 0 && Long.parseLong(m[0]) <= since) continue;
+                if (!first) sb.append(',');
+                first = false;
+                sb.append("{\"seq\":").append(m[0]).append(",\"name\":").append(q(m[1]))
+                    .append(",\"sector\":").append(q(m[2])).append(",\"text\":").append(q(m[3])).append('}');
+            }
+        }
+        return sb.append("]}").toString();
+    }
+
+    /** No color tags (nobody can fake a system message), no control chars, trimmed and cut — Без тегів кольору (ніхто не підробить системне повідомлення), без керівних символів, обрізано. */
+    static String chatClean(String s, int max) {
+        if (s == null) return "";
+        s = Strings.stripColors(s).replaceAll("\\p{Cntrl}", " ").trim();
+        return s.length() > max ? s.substring(0, max) : s;
+    }
+
+    /** Token bucket for chat per address — Відро токенів для чату на адресу. */
+    static boolean allowChat(String ip) {
+        double[] b = chatBuckets.computeIfAbsent(ip, k -> new double[]{CHAT_BURST, System.currentTimeMillis()});
+        synchronized (b) {
+            long now = System.currentTimeMillis();
+            b[0] = Math.min(CHAT_BURST, b[0] + (now - b[1]) / 1000.0 * CHAT_RATE);
+            b[1] = now;
+            if (b[0] < 1) return false;
+            b[0] -= 1;
+            return true;
+        }
     }
 
     // ---------- Research cost — Ціна досліджень ----------

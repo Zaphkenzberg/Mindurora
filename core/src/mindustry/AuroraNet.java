@@ -1845,6 +1845,105 @@ public class AuroraNet {
         });
     }
 
+    // ---------- Planet chat — Чат планети ----------
+
+    /** Chat prefix that sends a message to the whole planet instead of this sector — Префікс чату, що шле повідомлення всій планеті, а не цьому сектору. */
+    public static final String CHAT_PREFIX = "/p";
+    /** Last message number shown; -1 = not asked yet on this planet — Номер останнього показаного повідомлення; -1 = на цій планеті ще не питали. */
+    static volatile long chatSince = -1;
+    /** Authority the chat counter belongs to: another planet starts over — Authority, якому належить лічильник: інша планета — з початку. */
+    static volatile String chatBase = "";
+    static volatile boolean chatBusy;
+
+    /** Chat input (main thread): "/p text" goes to the planet. True if it was ours — Введення чату (головний потік): "/p текст" іде планеті. true, якщо це наше. */
+    public static boolean planetChat(String message) {
+        if (!sessionActive()) return false;
+        if (!(message.equals(CHAT_PREFIX) || message.startsWith(CHAT_PREFIX + " "))) return false;
+        String text = message.substring(CHAT_PREFIX.length()).trim();
+        if (text.isEmpty()) {
+            ui.chatfrag.addMessage(tr("chat.usage"));
+            return true;
+        }
+        Sector s = current;
+        String body = "{\"name\":" + js(myName()) + ",\"sector\":" + js(s == null ? "" : sid(s)) + ",\"text\":" + js(text) + "}";
+        String path = "/chat?player=" + q(me());
+        mainExecutor.submit(() -> {
+            String err = null;
+            try {
+                Res r = request("POST", path, body.getBytes(StandardCharsets.UTF_8));
+                if (r.code == 429) err = tr("chat.fast");
+                else if (r.code == 403) err = tr("chat.removed");
+                else if (r.code != 200) err = tr("chat.failed");
+            } catch (Exception e) {
+                Log.err("planet chat send failed", e);
+                err = tr("chat.failed");
+            }
+            String shown = err;
+            // Our own message comes back with the next poll, so everyone sees one order — Своє повідомлення повертається з наступним опитуванням, тож у всіх однаковий порядок
+            Core.app.post(() -> {
+                if (shown != null) ui.chatfrag.addMessage(shown);
+                else pollChat();
+            });
+        });
+        return true;
+    }
+
+    /** Fetch new planet messages into the chat (main thread, every 2 s while in a game) — Забрати нові повідомлення планети в чат (головний потік, кожні 2 с у грі). */
+    static void pollChat() {
+        if (chatBusy || !sessionActive() || !state.isGame() || ui == null || ui.chatfrag == null) return;
+        String base = authority();
+        if (!base.equals(chatBase)) {
+            chatBase = base;
+            chatSince = -1;
+        }
+        long since = chatSince;
+        chatBusy = true;
+        mainExecutor.submit(() -> {
+            try {
+                Res r = get("/chat?since=" + since);
+                if (r.code != 200) {
+                    // Old Authority without chat (404) or no connection: quietly try later — Старий Authority без чату (404) або нема зв'язку: тихо пробуємо пізніше
+                    chatBusy = false;
+                    return;
+                }
+                JsonValue v = parse(r);
+                long seq = v.getLong("seq", since);
+                Seq<String> lines = new Seq<>();
+                JsonValue msgs = v.get("msgs");
+                for (JsonValue c = msgs == null ? null : msgs.child; c != null; c = c.next) lines.add(chatLine(c));
+                Core.app.post(() -> {
+                    // Counter and messages change together, here, so the next poll can't repeat them — Лічильник і повідомлення міняються разом, тут, тож наступне опитування їх не повторить
+                    if (base.equals(chatBase)) {
+                        if (since < 0) ui.chatfrag.addMessage(tr("chat.usage"));
+                        for (String l : lines) ui.chatfrag.addMessage(l);
+                        chatSince = seq;
+                    }
+                    chatBusy = false;
+                });
+            } catch (Throwable t) {
+                chatBusy = false;
+            }
+        });
+    }
+
+    /** "[Planet] Name (Sector): text". Colors stripped again: the Authority may be someone else's — Кольори прибираємо ще раз: Authority може бути чужий. */
+    static String chatLine(JsonValue c) {
+        String where = sectorName(c.getString("sector", ""));
+        String name = Strings.stripColors(c.getString("name", "?"));
+        String text = Strings.stripColors(c.getString("text", ""));
+        return "[accent]" + tr("chat.prefix") + "[] [lightgray]" + name + (where.isEmpty() ? "" : " (" + where + ")") + ":[] " + text;
+    }
+
+    /** "serpulo-15" -> the sector's name, "" if unknown — "serpulo-15" -> назва сектора, "" якщо невідомий. */
+    static String sectorName(String id) {
+        int d = id.lastIndexOf('-');
+        if (d <= 0) return "";
+        Planet pl = content.planet(id.substring(0, d));
+        int i = Strings.parseInt(id.substring(d + 1), -1);
+        if (pl == null || i < 0 || i >= pl.sectors.size) return "";
+        return Strings.stripColors(pl.sectors.get(i).name());
+    }
+
     // ---------- Authority watch — Сторож Authority ----------
 
     /** Does Authority answer? (off the main thread) — Чи відповідає Authority? (не з головного потоку) */
@@ -2101,6 +2200,8 @@ public class AuroraNet {
             // Plain refresh: "fresh" (waking every host) only on open and after a spend — Звичайне оновлення: "fresh" (будить усіх хостів) лише при відкритті й після витрати
             if (sessionActive() && ui != null && ui.research != null && ui.research.isShown()) refreshItems(false);
         }), 2f, 2f);
+        // Planet chat: new messages every 2 s while in a game — Чат планети: нові повідомлення кожні 2 с у грі
+        Timer.schedule(() -> Core.app.post(AuroraNet::pollChat), 2f, 2f);
         Runtime.getRuntime().addShutdownHook(new Thread(() -> shutdownWork(false), "aurora-shutdown"));
         Events.on(DisposeEvent.class, e -> shutdownWork(true));
 

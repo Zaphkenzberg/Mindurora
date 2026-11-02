@@ -205,6 +205,9 @@ public class ChatFragment extends Table{
 
         message = UI.formatIcons(message);
 
+        //AURORA: "/p text" goes to the whole planet, not this sector — "/p текст" іде всій планеті, а не цьому сектору
+        if(AuroraNet.planetChat(message)) return;
+
         Events.fire(new ClientChatEvent(message));
 
         Call.sendChatMessage(message);
