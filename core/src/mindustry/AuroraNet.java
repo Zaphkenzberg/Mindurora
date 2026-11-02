@@ -1926,22 +1926,39 @@ public class AuroraNet {
         });
     }
 
-    /** "[Planet] Name (Sector): text". Colors stripped again: the Authority may be someone else's — Кольори прибираємо ще раз: Authority може бути чужий. */
-    static String chatLine(JsonValue c) {
-        String where = sectorName(c.getString("sector", ""));
-        String name = Strings.stripColors(c.getString("name", "?"));
-        String text = Strings.stripColors(c.getString("text", ""));
-        return "[accent]" + tr("chat.prefix") + "[] [lightgray]" + name + (where.isEmpty() ? "" : " (" + where + ")") + ":[] " + text;
+    /** Chat tag color per planet: orange by default, a soft red for Erekir — Колір тегу чату для планети: за замовчуванням помаранчевий, для Ерекіра м'який червоний. */
+    static String chatColor(@Nullable Planet pl) {
+        return pl != null && pl.name.equals("erekir") ? "[#ff7f7f]" : "[orange]";
     }
 
-    /** "serpulo-15" -> the sector's name, "" if unknown — "serpulo-15" -> назва сектора, "" якщо невідомий. */
-    static String sectorName(String id) {
+    /**
+     * "[Serpulo] Name (Sector): text": the tag names the planet the message came from (players of one Authority can be on
+     * Serpulo and Erekir at once). Colors stripped again: the Authority may be someone else's.
+     * — Тег називає планету, з якої прийшло повідомлення (гравці одного Authority можуть бути на Серпуло й Ерекірі
+     * одночасно). Кольори прибираємо ще раз: Authority може бути чужий.
+     */
+    static String chatLine(JsonValue c) {
+        String id = c.getString("sector", "");
+        Planet pl = planetOf(id);
+        Sector sec = sectorOf(pl, id);
+        String tag = pl == null ? tr("chat.prefix") : "[[" + Strings.stripColors(pl.localizedName) + "]";
+        String where = sec == null ? "" : " (" + Strings.stripColors(sec.name()) + ")";
+        String name = Strings.stripColors(c.getString("name", "?"));
+        String text = Strings.stripColors(c.getString("text", ""));
+        return chatColor(pl) + tag + "[] [lightgray]" + name + where + ":[] " + text;
+    }
+
+    /** "serpulo-15" -> Serpulo, null if unknown — null, якщо невідома. */
+    static @Nullable Planet planetOf(String id) {
         int d = id.lastIndexOf('-');
-        if (d <= 0) return "";
-        Planet pl = content.planet(id.substring(0, d));
-        int i = Strings.parseInt(id.substring(d + 1), -1);
-        if (pl == null || i < 0 || i >= pl.sectors.size) return "";
-        return Strings.stripColors(pl.sectors.get(i).name());
+        return d <= 0 ? null : content.planet(id.substring(0, d));
+    }
+
+    /** "serpulo-15" -> sector 15 of that planet, null if unknown — сектор 15 цієї планети, null якщо невідомий. */
+    static @Nullable Sector sectorOf(@Nullable Planet pl, String id) {
+        if (pl == null) return null;
+        int i = Strings.parseInt(id.substring(id.lastIndexOf('-') + 1), -1);
+        return i < 0 || i >= pl.sectors.size ? null : pl.sectors.get(i);
     }
 
     // ---------- Authority watch — Сторож Authority ----------
