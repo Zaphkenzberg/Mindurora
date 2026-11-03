@@ -18,6 +18,8 @@ import mindustry.core.*;
 import mindustry.game.EventType.*;
 import mindustry.gen.*;
 import mindustry.graphics.*;
+import mindustry.input.*;
+import arc.input.*;
 import mindustry.ui.*;
 import mindustry.type.*;
 import mindustry.ctype.*;
@@ -33,6 +35,8 @@ public class MenuFragment{
         private MenuRenderer renderer;
         private Seq<MenuButton> customButtons = new Seq<>();
         public Seq<MenuButton> desktopButtons = null;
+        /** AURORA: menu UI hidden to record the planet (toggle menus key, default C) — Інтерфейс меню сховано, щоб записати планету (клавіша сховати меню, за замовчуванням C). */
+        private boolean menuHidden;
 
         public void build(Group parent){
             AuroraNet.init();
@@ -45,6 +49,20 @@ public class MenuFragment{
             Group group = new WidgetGroup();
             group.setFillParent(true);
             group.visible(() -> !ui.editor.isShown());
+            // AURORA: the toggle menus key (C) hides buttons, logo and version over the menu planet; C, Esc or a click brings them back
+            // — Клавіша сховати меню (C) ховає кнопки, логотип і версію над планетою меню; C, Esc або клік повертають їх
+            group.update(() -> {
+                if(!state.isMenu()){
+                    menuHidden = false;
+                    return;
+                }
+                if(Core.scene.hasDialog() || Core.scene.hasField()) return;
+                if(menuHidden){
+                    if(Core.input.keyTap(Binding.toggleMenus) || Core.input.keyTap(KeyCode.escape) || Core.input.justTouched()) menuHidden = false;
+                }else if(Core.input.keyTap(Binding.toggleMenus)){
+                    menuHidden = true;
+                }
+            });
             parent.addChild(group);
 
             parent = group;
@@ -57,6 +75,13 @@ public class MenuFragment{
                 if(Core.settings.getBool("aurora-menu", true)) auroraMenu.render();
                 else renderer.render();
             });
+
+            // AURORA: everything over the background goes here, so one switch hides it — Усе поверх фону йде сюди, тож один перемикач ховає все
+            WidgetGroup overlay = new WidgetGroup();
+            overlay.setFillParent(true);
+            overlay.visible(() -> !menuHidden);
+            parent.addChild(overlay);
+            parent = overlay;
 
             parent.fill(c -> {
                 c.pane(Styles.noBarPane, cont -> {
