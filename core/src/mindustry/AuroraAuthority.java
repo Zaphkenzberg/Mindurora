@@ -225,6 +225,7 @@ public class AuroraAuthority {
         if (server != null) return true;
         try {
             int port = Core.settings.getInt("aurora-port", 8443);
+            dir().mkdirs(); // the folder must exist before the first write — папка має існувати до першого запису
             load();
             ownerUuid = Vars.platform.getUUID();
 
@@ -1681,6 +1682,11 @@ public class AuroraAuthority {
     static void writeAtomic(Fi target, byte[] data) throws IOException {
         java.nio.file.Path to = target.file().toPath();
         java.nio.file.Path tmp = to.resolveSibling(target.name() + "." + Thread.currentThread().getId() + "." + System.nanoTime() + ".tmp");
+        // Files.write does not create folders (Fi.write did): on a fresh install aurora-authority/ did not exist,
+        // so nothing was ever saved — no sector saves, research or stock
+        // — Files.write не створює папок (Fi.write створював): на свіжому встановленні aurora-authority/ не було,
+        // тож нічого не зберігалось — ні сейви секторів, ні дослідження, ні склад
+        if (to.getParent() != null) java.nio.file.Files.createDirectories(to.getParent());
         java.nio.file.Files.write(tmp, data);
         try {
             java.nio.file.Files.move(tmp, to, java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
