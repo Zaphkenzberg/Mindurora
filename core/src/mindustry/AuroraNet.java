@@ -38,7 +38,7 @@ public class AuroraNet {
      * або додаєш обов'язковий ендпоінт. Різні версії не розмовляють: гравці бачать "оновіть білд".
      */
     // 4: Authority over ArcNet instead of HTTP; 5: research opens only through a paid /spend; 6: per-sector host key
-    // — 4: Authority через ArcNet замість HTTP; 5: дослідження відкривається лише через оплачений /spend; 6: ключ хоста на сектор
+    // 4: Authority через ArcNet замість HTTP; 5: дослідження відкривається лише через оплачений /spend; 6: ключ хоста на сектор
     public static final int PROTOCOL = 6;
 
     static long lastProtoMsg;
@@ -130,7 +130,8 @@ public class AuroraNet {
             for (NetworkInterface ni : java.util.Collections.list(NetworkInterface.getNetworkInterfaces())) {
                 if (!ni.isUp() || ni.isLoopback()) continue;
                 for (InetAddress a : java.util.Collections.list(ni.getInetAddresses())) {
-                    if (!(a instanceof Inet4Address) || a.isLoopbackAddress()) continue;
+                    // 169.254.x: a dead adapter (no cable / no DHCP), nobody can reach it — мертвий адаптер (без кабелю / DHCP), до нього ніхто не достукається
+                    if (!(a instanceof Inet4Address) || a.isLoopbackAddress() || a.isLinkLocalAddress()) continue;
                     String ip = a.getHostAddress();
                     if (ip.startsWith("100.")) return ip; // Tailscale
                     if (fallback == null && !ip.startsWith("192.168.56.")) fallback = ip; // not VirtualBox — не VirtualBox
@@ -139,6 +140,28 @@ public class AuroraNet {
         } catch (Exception ignored) {
         }
         return fallback != null ? fallback : "127.0.0.1";
+    }
+
+    /** All our LAN / Tailscale IPv4 addresses, so Authority can give each joining player the one on his network — Усі наші LAN / Tailscale IPv4, щоб Authority дав кожному гравцю адресу в його мережі. */
+    static String myIpsJson() {
+        StringBuilder sb = new StringBuilder("[");
+        java.util.LinkedHashSet<String> all = new java.util.LinkedHashSet<>();
+        String s = Core.settings.getString("aurora-ip", "");
+        if (!s.isEmpty() && !s.equals("127.0.0.1")) all.add(s);
+        try {
+            for (NetworkInterface ni : java.util.Collections.list(NetworkInterface.getNetworkInterfaces())) {
+                if (!ni.isUp() || ni.isLoopback()) continue;
+                for (InetAddress a : java.util.Collections.list(ni.getInetAddresses())) {
+                    if (a instanceof Inet4Address && !a.isLoopbackAddress() && !a.isLinkLocalAddress()) all.add(a.getHostAddress());
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        for (String ip : all) {
+            if (sb.length() > 1) sb.append(',');
+            sb.append(js(ip));
+        }
+        return sb.append(']').toString();
     }
 
     public static int myPort() {
@@ -429,7 +452,7 @@ public class AuroraNet {
     }
 
     static Claim claim(Sector s) throws Exception {
-        String body = "{\"ip\":" + js(myIp()) + ",\"port\":" + myPort() + ",\"player\":" + js(me()) + ",\"name\":" + js(myName())
+        String body = "{\"ip\":" + js(myIp()) + ",\"ips\":" + myIpsJson() + ",\"port\":" + myPort() + ",\"player\":" + js(me()) + ",\"name\":" + js(myName())
             + ",\"key\":" + js(hostKeys.getOrDefault(sid(s), "")) + "}";
         Res res = request("POST", sectorPath(s, "claim"), body.getBytes(StandardCharsets.UTF_8));
         if (res.code == 403) {

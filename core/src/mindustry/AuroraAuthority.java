@@ -47,6 +47,8 @@ public class AuroraAuthority {
         String name = "", addr = "";
         /** Secret given to this host on claim; every host call must carry it — Секрет, виданий цьому хосту при клеймі; кожен виклик хоста має його нести. */
         String key = "";
+        /** All LAN / Tailscale addresses the host has; a joining player gets the one on his own network — Усі LAN / Tailscale адреси хоста; гравець, що заходить, отримує ту, що в його мережі. */
+        String[] ips = {};
 
         Host(String ip, int port, String player, long lastSeen, boolean ready) {
             this.ip = ip;
@@ -67,9 +69,38 @@ public class AuroraAuthority {
             return this;
         }
 
+        Host ips(String[] ips) {
+            this.ips = ips == null ? new String[0] : ips;
+            return this;
+        }
+
+        /**
+         * The address for a joining player: one on the same /24 as him (a phone on Wi-Fi gets the PC's Wi-Fi address,
+         * not a dead 169.254 adapter or a Tailscale one), else a Tailscale one if he comes over Tailscale, else ip.
+         * — Адреса для гравця, що заходить: у тій самій /24, що й він (телефон у Wi-Fi отримає Wi-Fi адресу ПК, а не мертвий
+         * адаптер 169.254 чи Tailscale), інакше Tailscale, якщо він прийшов через Tailscale, інакше ip.
+         */
+        String ipFor(InetAddress who) {
+            if (who == null || ips.length == 0) return ip;
+            byte[] r = who.getAddress();
+            if (r.length != 4) return ip;
+            boolean viaTailscale = isTailscale(who);
+            String tailscale = null;
+            for (String c : ips) {
+                try {
+                    byte[] b = InetAddress.getByName(c).getAddress();
+                    if (b.length != 4) continue;
+                    if (b[0] == r[0] && b[1] == r[1] && b[2] == r[2]) return c;
+                    if (tailscale == null && isTailscale(InetAddress.getByAddress(b))) tailscale = c;
+                } catch (Exception ignored) {
+                }
+            }
+            return viaTailscale && tailscale != null ? tailscale : ip;
+        }
+
         /** Still loading the sector: alive, but not listening yet — Ще вантажить сектор: живий, але ще не слухає. */
         Host touch(long now) {
-            return new Host(ip, port, player, now, ready).with(name, addr).keyed(key);
+            return new Host(ip, port, player, now, ready).with(name, addr).keyed(key).ips(ips);
         }
 
         int stateAt(long now) {
@@ -88,7 +119,7 @@ public class AuroraAuthority {
         }
 
         Host beat(long now) {
-            return new Host(ip, port, player, now, true).with(name, addr).keyed(key);
+            return new Host(ip, port, player, now, true).with(name, addr).keyed(key).ips(ips);
         }
 
         /** Player UUID is never sent: it is the player's "key" to the sector — UUID гравця не віддаємо: це його "ключ" до сектора. */
@@ -1103,7 +1134,13 @@ public class AuroraAuthority {
             String joinIp = privateLiteral(reported) ? reported : fromAddr;
             int joinPort = j.getInt("port", Vars.port);
             if (joinPort <= 0 || joinPort > 65535) joinPort = Vars.port;
-            Host mine = new Host(joinIp, joinPort, who, now, false).with(nm, fromAddr).keyed(newKey());
+            // All its addresses (newer games send them), LAN / Tailscale literals only — Усі його адреси (нові версії гри шлють їх), лише літерали LAN / Tailscale
+            List<String> ipList = new ArrayList<>();
+            JsonValue ipsJson = j.get("ips");
+            for (JsonValue c = ipsJson == null ? null : ipsJson.child; c != null && ipList.size() < 8; c = c.next) {
+                if (c.isString() && privateLiteral(c.asString()) && !c.asString().startsWith("127.")) ipList.add(c.asString());
+            }
+            Host mine = new Host(joinIp, joinPort, who, now, false).with(nm, fromAddr).keyed(newKey()).ips(ipList.toArray(new String[0]));
             Host prev = hosts.get(id);
             // A live host stays unless the claim comes with its key (the same game re-claiming); a dead one is replaced.
             // Same uuid without the key (a copied uuid, or our own game restarted) waits until the old entry expires.
@@ -1120,7 +1157,7 @@ public class AuroraAuthority {
 
             if (cur == mine) json(ex, 200, "{\"role\":\"host\",\"key\":" + q(mine.key) + "}");
             else if (sameButLocked) json(ex, 200, "{\"role\":\"wait\",\"state\":\"lost\",\"retry\":" + cur.secondsToFree(now) + "}");
-            else if (cur.stateAt(now) == OK) json(ex, 200, "{\"role\":\"client\",\"ip\":" + q(cur.ip) + ",\"port\":" + cur.port + "}");
+            else if (cur.stateAt(now) == OK) json(ex, 200, "{\"role\":\"client\",\"ip\":" + q(cur.ipFor(ex.getRemoteAddress().getAddress())) + ",\"port\":" + cur.port + "}");
             // Host is silent: neither join it nor take the sector, wait — Хост мовчить: ні підключатись, ні забирати сектор — чекати
             else json(ex, 200, "{\"role\":\"wait\",\"state\":" + q(STATE_NAMES[cur.stateAt(now)]) + ",\"retry\":" + cur.secondsToFree(now) + "}");
 
