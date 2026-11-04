@@ -288,7 +288,11 @@ public class AuroraAuthority {
                 java.nio.ByteBuffer buf = mindustry.net.NetworkIO.writeServerData(
                     Vars.player == null ? "Aurora" : Vars.player.name, "Aurora", liveCount(), 0,
                     mindustry.game.Gamemode.survival.ordinal(), 0, AuroraNet.tr("discovery.desc"), "Aurora", Core.settings.getInt("port", Vars.port));
-                handler.respond(buf);
+                try {
+                    handler.respond(buf);
+                } catch (NullPointerException | java.nio.channels.ClosedChannelException ignored) {
+                    // the server is closing: no answer — сервер закривається: без відповіді
+                }
             });
             s.addListener(new NetListener() {
                 @Override

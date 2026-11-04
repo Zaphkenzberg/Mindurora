@@ -102,7 +102,14 @@ public class ArcNetProvider implements NetProvider{
             int length = buffer.position();
             buffer.position(0);
             buffer.limit(length);
-            handler.respond(buffer);
+            //AURORA: Arc's Server.close() drops the UDP channel without the update lock, so a LAN discovery packet that
+            //arrives while the server is closing (leaving / switching sectors) threw an NPE here and crashed the game
+            //— Server.close() в Arc прибирає UDP-канал без блокування оновлення, тож пакет пошуку в LAN, що прийшов під час
+            //закриття сервера (вихід / зміна сектора), кидав тут NPE і валив гру
+            try{
+                handler.respond(buffer);
+            }catch(NullPointerException | java.nio.channels.ClosedChannelException ignored){
+            }
         });
 
         server.addListener(new NetListener(){
