@@ -942,6 +942,22 @@
                     sectorTop.color.a = Mathf.lerpDelta(sectorTop.color.a, 1f, 0.1f);
                 }
 
+                //AURORA: planets move every frame on the cosmetic orbit, but the camera is only re-aimed when the map is drawn,
+                //so the mouse ray and the hover label used last frame's camera and jittered. Re-aim it at the current position first.
+                //— Планети щокадру рухаються по косметичній орбіті, а камера наводиться лише при малюванні карти, тож промінь миші
+                //й підпис брали камеру з минулого кадру і тремтіли. Спершу наводимо її на поточну позицію.
+                if(state.planet != null){
+                    var cam = planets.cam;
+                    if(state.otherCamPos != null){
+                        cam.position.set(state.otherCamPos).lerp(state.planet.position, state.otherCamAlpha).add(state.camPos);
+                    }else{
+                        cam.position.set(state.planet.position).add(state.camPos);
+                    }
+                    cam.up.set(Vec3.Y);
+                    cam.lookAt(state.planet.position);
+                    cam.update();
+                }
+
                 if(hovered != null && state.planet.hasGrid()){
                     addChild(hoverLabel);
                     hoverLabel.toFront();
