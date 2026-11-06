@@ -30,7 +30,7 @@ public class AuroraMenuRenderer implements PlanetRenderer.PlanetInterfaceRendere
     final PlanetParams params = new PlanetParams();
     final FrameBuffer buffer = new FrameBuffer(2, 2);
     final Vec3 tmp = new Vec3(), tmp2 = new Vec3();
-    final Color shield = mindustry.AuroraNet.shieldColor;
+    final Color shield = AuroraMapRender.shieldColor;
     float radius = 100f;
 
     // Camera control: yaw/pitch in degrees, inertia after release — Керування камерою: yaw/pitch у градусах, інерція після відпускання
@@ -182,11 +182,11 @@ public class AuroraMenuRenderer implements PlanetRenderer.PlanetInterfaceRendere
             boolean wv = lb && info != null ? info.waves : mindustry.AuroraNet.remoteWaves(sec);
             if(lb || rb){
                 // Orange, blue while someone plays there — Помаранчева, синя, поки там хтось грає
-                planets.drawSelection(sec, Tmp.c1.set(mindustry.AuroraNet.frameColor(sec, atk, wv)).mul(0.8f).a(1f), 0.026f, -0.001f);
+                planets.drawSelection(sec, Tmp.c1.set(AuroraMapRender.frameColor(sec, atk, wv)).mul(0.8f).a(1f), 0.026f, -0.001f);
             }
 
             // Live sectors: blue frame while capturing / blinking red on attack — Живі сектори: синя рамка при захопленні / червоне блимання при атаці
-            mindustry.AuroraNet.drawLiveSector(planets, sec, lb || rb, wv, atk, 1f);
+            AuroraMapRender.drawLiveSector(planets, sec, lb || rb, wv, atk, 1f);
         }
 
         planets.batch.flush(Gl.triangles);
@@ -208,7 +208,7 @@ public class AuroraMenuRenderer implements PlanetRenderer.PlanetInterfaceRendere
                 info.icon != null ? Fonts.getLargeIcon(info.icon) : null;
             if(icon == null) continue;
 
-            Color color = attacked[sec.id] ? mindustry.AuroraNet.baseColor : Color.white;
+            Color color = attacked[sec.id] ? AuroraMapRender.baseColor : Color.white;
             planets.drawPlane(sec, () -> {
                 Draw.color(color);
                 Draw.rect(icon, 0, 0, iw, iw * icon.height / icon.width);
@@ -481,6 +481,6 @@ public class AuroraMenuRenderer implements PlanetRenderer.PlanetInterfaceRendere
             drawCage(jx + Scl.scl(4f), jy, 0.4f, Color.scarlet, t);
             drawCage(jx - Scl.scl(4f), jy, 0.4f, Color.cyan, t);
         }
-        drawCage(jx, jy, 0.65f + Mathf.absin(t, 9f, 0.3f), mindustry.AuroraNet.cageColor, t);
+        drawCage(jx, jy, 0.65f + Mathf.absin(t, 9f, 0.3f), AuroraMapRender.cageColor, t);
     }
 }

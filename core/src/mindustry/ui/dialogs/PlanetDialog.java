@@ -467,7 +467,7 @@
                             boolean wv = lb ? sec.info.waves : mindustry.AuroraNet.remoteWaves(sec);
                             Color color =
                             // AURORA: everyone's bases orange, blue while someone plays there — Бази всіх гравців помаранчеві, сині, поки там хтось грає
-                            lb || rb ? Tmp.c2.set(mindustry.AuroraNet.frameColor(sec, atk, wv)).lerp(Team.crux.color, sec.hasEnemyBase() ? 0.5f : 0f) :
+                            lb || rb ? Tmp.c2.set(mindustry.graphics.AuroraMapRender.frameColor(sec, atk, wv)).lerp(Team.crux.color, sec.hasEnemyBase() ? 0.5f : 0f) :
                             sec.preset != null && sec.preset.requireUnlock ?
                                 sec.preset.unlocked() ? Tmp.c2.set(Team.derelict.color).lerp(Color.white, Mathf.absin(Time.time, 10f, 1f)) :
                                 Color.gray :
@@ -479,7 +479,7 @@
                             }
 
                             // AURORA: someone is playing in the sector right now — У секторі зараз хтось грає
-                            mindustry.AuroraNet.drawLiveSector(planets, sec, lb || rb, wv, atk, state.uiAlpha);
+                            mindustry.graphics.AuroraMapRender.drawLiveSector(planets, sec, lb || rb, wv, atk, state.uiAlpha);
                         }else{
                             planets.fill(sec, Tmp.c1.set(shadowColor).mul(1, 1, 1, state.uiAlpha), -0.001f);
                         }
@@ -560,7 +560,7 @@
                             (sec.preset != null && sec.preset.requireUnlock && sec.preset.unlocked() ? sec.preset.uiIcon : Fonts.getLargeIcon("terrain")) :
                             sec.preset != null && sec.preset.requireUnlock && sec.preset.locked() && sec.preset.techNode != null && (sec.preset.techNode.parent == null || !sec.preset.techNode.parent.content.locked()) ? Fonts.getLargeIcon("lock") :
                             preficon;
-                        var color = sec.isAttacked() ? mindustry.AuroraNet.baseColor : Color.white;
+                        var color = sec.isAttacked() ? mindustry.graphics.AuroraMapRender.baseColor : Color.white;
 
                         if(icon != null){
                             planets.drawPlane(sec, () -> {
