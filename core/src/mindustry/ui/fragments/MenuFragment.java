@@ -25,6 +25,7 @@ import mindustry.type.*;
 import mindustry.ctype.*;
 import mindustry.AuroraNet;
 import mindustry.AuroraAuthority;
+import mindustry.AuroraResearch;
 
 import static mindustry.Vars.*;
 import static mindustry.gen.Tex.*;
@@ -323,7 +324,7 @@ public class MenuFragment{
                 content.each(c -> {
                     if (c instanceof UnlockableContent u) u.reloadUnlock();
                 });
-            if(slot != 0) AuroraNet.syncUnlocks();
+            if(slot != 0) AuroraResearch.syncUnlocks();
             for(var node : mindustry.content.TechTree.all) node.reloadProgress();
             AuroraNet.onCampaignSlot(slot);
         }
