@@ -19,6 +19,14 @@ import static mindustry.AuroraNet.putBytes;
 import static mindustry.AuroraNet.parse;
 import static mindustry.AuroraNet.request;
 import mindustry.AuroraNet.Res;
+import java.nio.charset.StandardCharsets;
+
+import static mindustry.AuroraNet.myName;
+import static mindustry.AuroraNet.hostPath;
+import static mindustry.AuroraNet.snapshot;
+import static mindustry.AuroraNet.uploads;
+import static mindustry.AuroraNet.lastPush;
+import static mindustry.AuroraNet.forcePush;
 public class AuroraItems {
 
     // ---------- Shared items — Спільні ресурси ----------
