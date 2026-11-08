@@ -10,7 +10,7 @@ import arc.util.*;
 public class AuroraSettingsDialog extends BaseDialog{
 
     public AuroraSettingsDialog(Runnable onClose){
-        super(mindustry.AuroraNet.tr("settings.title"));
+        super(mindustry.AuroraUtil.tr("settings.title"));
         addCloseButton();
         hidden(onClose);
 
@@ -25,27 +25,27 @@ public class AuroraSettingsDialog extends BaseDialog{
             t.row();
 
             // IP friends use when we host a sector (empty = auto: Tailscale, then LAN) — IP для друзів, коли ми хост сектора (порожньо = авто: Tailscale, потім LAN)
-            t.add(mindustry.AuroraNet.tr("settings.myip"));
+            t.add(mindustry.AuroraUtil.tr("settings.myip"));
             t.field(Core.settings.getString("aurora-ip", ""), v ->
                     Core.settings.put("aurora-ip", v.trim())
             ).width(420f).get().setMaxLength(80);
             t.row();
 
             // Must match the planet host's password — Має збігатися з паролем хоста планети
-            t.add(mindustry.AuroraNet.tr("settings.password"));
+            t.add(mindustry.AuroraUtil.tr("settings.password"));
             t.field(Core.settings.getString("aurora-token", ""), v ->
                     Core.settings.put("aurora-token", v.trim())
             ).width(420f).get().setMaxLength(40);
             t.row();
 
             // Game port when we host a sector — Порт гри, коли ми хост сектора
-            t.add(mindustry.AuroraNet.tr("settings.port"));
+            t.add(mindustry.AuroraUtil.tr("settings.port"));
             t.field(String.valueOf(Core.settings.getInt("port", 6567)), v ->
                     Core.settings.put("port", Strings.parseInt(v, 6567))
             ).width(420f).get().setMaxLength(5);
             t.row();
 
-            t.add(mindustry.AuroraNet.tr("settings.hint")).colspan(2).left().padTop(10f);
+            t.add(mindustry.AuroraUtil.tr("settings.hint")).colspan(2).left().padTop(10f);
         });
     }
 }

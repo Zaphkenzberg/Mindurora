@@ -10,8 +10,8 @@ import mindustry.gen.*;
 
 import static mindustry.Vars.*;
 import static mindustry.AuroraNet.myName;
-import static mindustry.AuroraNet.tr;
-import static mindustry.AuroraNet.q;
+import static mindustry.AuroraUtil.tr;
+import static mindustry.AuroraUtil.urlEnc;
 import static mindustry.AuroraNet.get;
 import static mindustry.AuroraNet.parse;
 import static mindustry.AuroraNet.sessionActive;
@@ -63,7 +63,7 @@ public class AuroraResearch {
     }
     static void pushUnlock(String name, String by) throws Exception {
         if (refusedUnlocks.contains(name)) return;
-        Res r = get("/unlock/" + q(name) + "?by=" + q(by));
+        Res r = get("/unlock/" + urlEnc(name) + "?by=" + urlEnc(by));
         if (r.code == 403 || r.code == 400) refusedUnlocks.add(name);
     }
 

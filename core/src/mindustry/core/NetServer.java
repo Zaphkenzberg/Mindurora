@@ -365,7 +365,7 @@ public class NetServer implements ApplicationListener{
             }
             // AURORA: only the planet host removes players — Видаляти гравців може лише хост планети
             if(mindustry.AuroraNet.hostingAurora()){
-                player.sendMessage(mindustry.AuroraNet.tr("server.owneronly"));
+                player.sendMessage(mindustry.AuroraUtil.tr("server.owneronly"));
                 return;
             }
 
@@ -804,7 +804,7 @@ public class NetServer implements ApplicationListener{
         // AURORA: kick / ban only by the planet host — Кік / бан лише від хоста планети
         if((action == AdminAction.kick || action == AdminAction.ban) && !mindustry.AuroraNet.mayRemove(player)){
             warn("Aurora: @ tried to @ @, but only the planet host may remove players.", player.plainName(), action.name(), other.plainName());
-            if(player.con != null) player.sendMessage(mindustry.AuroraNet.tr("server.owneronly"));
+            if(player.con != null) player.sendMessage(mindustry.AuroraUtil.tr("server.owneronly"));
             return;
         }
 

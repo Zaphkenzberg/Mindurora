@@ -640,7 +640,7 @@ public class ResearchDialog extends BaseDialog{
             // No partial progress in the shared campaign: everything or nothing — Часткового прогресу в спільній кампанії нема: все або нічого
             for(var e : need){
                 if(items.get(e.key) < e.value){
-                    ui.showInfoToast(mindustry.AuroraNet.tr("research.missing", e.key.emoji(), e.key.localizedName), 3f);
+                    ui.showInfoToast(mindustry.AuroraUtil.tr("research.missing", e.key.emoji(), e.key.localizedName), 3f);
                     return;
                 }
             }
@@ -649,7 +649,7 @@ public class ResearchDialog extends BaseDialog{
             mindustry.AuroraItems.spendConfirmed(need, node.content.name, ok -> {
                 auroraWaiting = false;
                 if(!ok){
-                    ui.showInfoToast(mindustry.AuroraNet.tr("research.refused"), 4f);
+                    ui.showInfoToast(mindustry.AuroraUtil.tr("research.refused"), 4f);
                     mindustry.AuroraItems.refreshItems(true);
                     return;
                 }

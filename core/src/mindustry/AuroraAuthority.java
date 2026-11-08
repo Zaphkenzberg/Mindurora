@@ -19,6 +19,8 @@ import java.util.concurrent.*;
  * — Вбудований Authority: "мозок" спільної планети Aurora, сервер ArcNet (TCP) у грі хоста планети.
  * Тримає, хто хостить який сектор, сейви секторів, спільні дослідження і спільний склад.
  */
+import static mindustry.AuroraUtil.jsonStr;
+
 public class AuroraAuthority {
 
     // ---------- What Authority needs from the game — Що Authority потрібно від гри ----------
@@ -161,8 +163,8 @@ public class AuroraAuthority {
 
         /** Player UUID is never sent: it is the player's "key" to the sector — UUID гравця не віддаємо: це його "ключ" до сектора. */
         String json(long now) {
-            return "{\"ip\":" + q(ip) + ",\"port\":" + port + ",\"lastSeen\":" + lastSeen + ",\"ready\":" + ready
-                + ",\"state\":" + q(STATE_NAMES[stateAt(now)]) + "}";
+            return "{\"ip\":" + jsonStr(ip) + ",\"port\":" + port + ",\"lastSeen\":" + lastSeen + ",\"ready\":" + ready
+                + ",\"state\":" + jsonStr(STATE_NAMES[stateAt(now)]) + "}";
         }
     }
 
@@ -598,7 +600,7 @@ public class AuroraAuthority {
             for (Map.Entry<String, Map<String, Integer>> e : stock.entrySet()) {
                 if (!first) sb.append(',');
                 first = false;
-                sb.append(q(e.getKey())).append(':').append(countsJson(e.getValue()));
+                sb.append(jsonStr(e.getKey())).append(':').append(countsJson(e.getValue()));
             }
             sb.append("},\"pending\":{");
             first = true;
@@ -606,7 +608,7 @@ public class AuroraAuthority {
                 if (e.getValue().isEmpty()) continue;
                 if (!first) sb.append(',');
                 first = false;
-                sb.append(q(e.getKey())).append(':').append(opsJson(e.getValue()));
+                sb.append(jsonStr(e.getKey())).append(':').append(opsJson(e.getValue()));
             }
             sb.append("}}");
             // Temp file first, then replace: a crash never leaves a cut JSON — Спершу тимчасовий файл, потім заміна: краш не лишить обрізаний JSON
@@ -666,7 +668,7 @@ public class AuroraAuthority {
                 StringBuilder sb = new StringBuilder("{");
                 for (String s : unlocked) {
                     if (sb.length() > 1) sb.append(',');
-                    sb.append(q(s)).append(':').append(q(unlockedBy.getOrDefault(s, "")));
+                    sb.append(jsonStr(s)).append(':').append(jsonStr(unlockedBy.getOrDefault(s, "")));
                 }
                 json(ex, 200, sb.append('}').toString());
 
@@ -686,7 +688,7 @@ public class AuroraAuthority {
                     if (!by.isEmpty()) unlockedBy.put(p[2], by);
                     saveUnlocks();
                 }
-                json(ex, 200, "{\"name\":" + q(p[2]) + ",\"unlocked\":true}");
+                json(ex, 200, "{\"name\":" + jsonStr(p[2]) + ",\"unlocked\":true}");
 
             } else if (get && p.length == 2 && path.equals("sectors")) {
                 long now = System.currentTimeMillis();
@@ -694,19 +696,19 @@ public class AuroraAuthority {
                 hosts.forEach((id, h) -> {
                     if (!h.alive(now)) return;
                     if (sb.length() > 1) sb.append(',');
-                    sb.append(q(id)).append(':').append(h.json(now));
+                    sb.append(jsonStr(id)).append(':').append(h.json(now));
                 });
                 json(ex, 200, sb.append('}').toString());
 
             } else if (get && p.length == 2 && path.equals("owner")) {
                 // Who the planet host is: a hash of the uuid (never the uuid itself) + own IPs, so sector hosts can give him admin
                 // — Хто хост планети: хеш uuid (ніколи сам uuid) + власні IP, щоб хости секторів давали йому адмінку
-                StringBuilder sb = new StringBuilder("{\"uuidHash\":").append(q(sha256(ownerUuid))).append(",\"ips\":[");
+                StringBuilder sb = new StringBuilder("{\"uuidHash\":").append(jsonStr(sha256(ownerUuid))).append(",\"ips\":[");
                 boolean first = true;
                 for (String ip : ownIps()) {
                     if (!first) sb.append(',');
                     first = false;
-                    sb.append(q(ip));
+                    sb.append(jsonStr(ip));
                 }
                 json(ex, 200, sb.append("]}").toString());
 
@@ -716,14 +718,14 @@ public class AuroraAuthority {
                 for (String u : bans.keySet()) {
                     if (!first) sb.append(',');
                     first = false;
-                    sb.append(q(u));
+                    sb.append(jsonStr(u));
                 }
                 sb.append("],\"ips\":[");
                 first = true;
                 for (String ip : bannedIps) {
                     if (!first) sb.append(',');
                     first = false;
-                    sb.append(q(ip));
+                    sb.append(jsonStr(ip));
                 }
                 json(ex, 200, sb.append("]}").toString());
 
@@ -740,7 +742,7 @@ public class AuroraAuthority {
                 StringBuilder sb = new StringBuilder("{");
                 for (String s : saves) {
                     if (sb.length() > 1) sb.append(',');
-                    sb.append(q(s)).append(':').append(infoBits.getOrDefault(s, 1 | 2));
+                    sb.append(jsonStr(s)).append(':').append(infoBits.getOrDefault(s, 1 | 2));
                 }
                 json(ex, 200, sb.append('}').toString());
 
@@ -1117,7 +1119,7 @@ public class AuroraAuthority {
             }
             if (r.difficulty == null || r.difficulty.ordinal() < mindustry.game.Difficulty.eradication.ordinal()) r.difficulty = mindustry.game.Difficulty.eradication;
             if (sb.length() > 1) sb.append(',');
-            sb.append(q(pl.name)).append(':').append(rulesJsonWriter.toJson(r, mindustry.game.CampaignRules.class));
+            sb.append(jsonStr(pl.name)).append(':').append(rulesJsonWriter.toJson(r, mindustry.game.CampaignRules.class));
         }
         return sb.append('}').toString();
     }
@@ -1194,11 +1196,11 @@ public class AuroraAuthority {
             Log.info("Authority claim @ by @ from @ -> @ | prev=@", id, shortId(mine.player), mine.ip, cur == mine ? "HOST" : "client",
                 prev == null ? "none" : shortId(prev.player) + " age=" + (now - prev.lastSeen) + "ms ready=" + prev.ready);
 
-            if (cur == mine) json(ex, 200, "{\"role\":\"host\",\"key\":" + q(mine.key) + "}");
+            if (cur == mine) json(ex, 200, "{\"role\":\"host\",\"key\":" + jsonStr(mine.key) + "}");
             else if (sameButLocked) json(ex, 200, "{\"role\":\"wait\",\"state\":\"lost\",\"retry\":" + cur.secondsToFree(now) + "}");
-            else if (cur.stateAt(now) == OK) json(ex, 200, "{\"role\":\"client\",\"ip\":" + q(cur.ipFor(ex.getRemoteAddress().getAddress())) + ",\"port\":" + cur.port + "}");
+            else if (cur.stateAt(now) == OK) json(ex, 200, "{\"role\":\"client\",\"ip\":" + jsonStr(cur.ipFor(ex.getRemoteAddress().getAddress())) + ",\"port\":" + cur.port + "}");
             // Host is silent: neither join it nor take the sector, wait — Хост мовчить: ні підключатись, ні забирати сектор — чекати
-            else json(ex, 200, "{\"role\":\"wait\",\"state\":" + q(STATE_NAMES[cur.stateAt(now)]) + ",\"retry\":" + cur.secondsToFree(now) + "}");
+            else json(ex, 200, "{\"role\":\"wait\",\"state\":" + jsonStr(STATE_NAMES[cur.stateAt(now)]) + ",\"retry\":" + cur.secondsToFree(now) + "}");
 
         } else if (post && action.equals("heartbeat")) {
             // Body (new clients): the sector's players [{uuid, ip, name, pid}], the host himself included — Тіло (нові клієнти): гравці сектора [{uuid, ip, name}]
@@ -1251,7 +1253,7 @@ public class AuroraAuthority {
                 if (!removed(pl[0]) && !bannedIps.contains(pl[1])) continue;
                 if (!first) kb.append(',');
                 first = false;
-                kb.append(q(pl[0]));
+                kb.append(jsonStr(pl[0]));
             }
             json(ex, 200, kb.append("]}").toString());
 
@@ -1681,8 +1683,8 @@ public class AuroraAuthority {
                 if (since >= 0 && Long.parseLong(m[0]) <= since) continue;
                 if (!first) sb.append(',');
                 first = false;
-                sb.append("{\"seq\":").append(m[0]).append(",\"name\":").append(q(m[1]))
-                    .append(",\"sector\":").append(q(m[2])).append(",\"text\":").append(q(m[3])).append('}');
+                sb.append("{\"seq\":").append(m[0]).append(",\"name\":").append(jsonStr(m[1]))
+                    .append(",\"sector\":").append(jsonStr(m[2])).append(",\"text\":").append(jsonStr(m[3])).append('}');
             }
         }
         return sb.append("]}").toString();
@@ -1920,22 +1922,11 @@ public class AuroraAuthority {
         return set.contains(name);
     }
 
-    /** JSON string with escaping — Рядок JSON з екрануванням. */
-    static String q(String s) {
-        StringBuilder sb = new StringBuilder("\"");
-        for (char c : s.toCharArray()) {
-            if (c == '"' || c == '\\') sb.append('\\').append(c);
-            else if (c < 0x20) sb.append(String.format("\\u%04x", (int) c));
-            else sb.append(c);
-        }
-        return sb.append('"').toString();
-    }
-
     static String countsJson(Map<String, Integer> m) {
         StringBuilder sb = new StringBuilder("{");
         m.forEach((k, v) -> {
             if (sb.length() > 1) sb.append(',');
-            sb.append(q(k)).append(':').append(v);
+            sb.append(jsonStr(k)).append(':').append(v);
         });
         return sb.append('}').toString();
     }
@@ -1944,7 +1935,7 @@ public class AuroraAuthority {
         StringBuilder sb = new StringBuilder("[");
         for (Op o : ops) {
             if (sb.length() > 1) sb.append(',');
-            sb.append("{\"id\":").append(q(o.id)).append(",\"item\":").append(q(o.item)).append(",\"amount\":").append(o.amount).append('}');
+            sb.append("{\"id\":").append(jsonStr(o.id)).append(",\"item\":").append(jsonStr(o.item)).append(",\"amount\":").append(o.amount).append('}');
         }
         return sb.append(']').toString();
     }

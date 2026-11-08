@@ -322,7 +322,7 @@ public class PlanetDialog extends BaseDialog implements PlanetInterfaceRenderer{
             if(Core.graphics.isPortrait()) buttons.row();
             buttons.button("Aurora", Icon.planet, () -> new AuroraHostDialog().show()).size(200f, 54f)
                 .visible(() -> mode == look).pad(2).bottom();
-            buttons.button(mindustry.AuroraNet.tr("players.button"), Icon.players, () -> new AuroraPlayersDialog().show()).size(200f, 54f)
+            buttons.button(mindustry.AuroraUtil.tr("players.button"), Icon.players, () -> new AuroraPlayersDialog().show()).size(200f, 54f)
                 .visible(() -> mode == look).pad(2).bottom();
         }
     }
@@ -1151,14 +1151,14 @@ public class PlanetDialog extends BaseDialog implements PlanetInterfaceRenderer{
 
     public void abandonSectorConfirm(Sector sector, Runnable listener){
         if(!mindustry.AuroraNet.mayAbandon()){
-            ui.showInfo(mindustry.AuroraNet.tr("abandon.owneronly"));
+            ui.showInfo(mindustry.AuroraUtil.tr("abandon.owneronly"));
             return;
         }
         ui.showConfirm("@sector.abandon.confirm", () -> {
             // AURORA: a sector nobody plays is removed on Authority too; someone plays it -> refuse
             // — Сектор, де ніхто не грає, видаляється і в Authority; хтось грає -> відмова
             if(auroraSlot() && !sector.isBeingPlayed() && !mindustry.AuroraNet.abandonOnPlanet(sector)){
-                ui.showInfo(mindustry.AuroraNet.tr("abandon.occupied"));
+                ui.showInfo(mindustry.AuroraUtil.tr("abandon.occupied"));
                 return;
             }
             if(listener != null) listener.run();
@@ -1324,7 +1324,7 @@ public class PlanetDialog extends BaseDialog implements PlanetInterfaceRenderer{
         }
 
         if(mindustry.AuroraNet.liveSector(sector)){
-            stable.add(mindustry.AuroraNet.tr("sector.someone")).row();
+            stable.add(mindustry.AuroraUtil.tr("sector.someone")).row();
         }
 
         if(sector.isAttacked()){

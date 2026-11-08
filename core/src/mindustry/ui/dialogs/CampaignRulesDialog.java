@@ -65,7 +65,7 @@ public class CampaignRulesDialog extends BaseDialog{
                     }
                 }
             }).left().fill(false).expand(false, false).row();
-            if(mindustry.AuroraRules.rulesFromHost()) current.add(mindustry.AuroraNet.tr("rules.fromhost")).left().row();
+            if(mindustry.AuroraRules.rulesFromHost()) current.add(mindustry.AuroraUtil.tr("rules.fromhost")).left().row();
 
             if(planet.allowSectorInvasion){
                 check("@rules.invasions", b -> rules.sectorInvasion = b, () -> rules.sectorInvasion);

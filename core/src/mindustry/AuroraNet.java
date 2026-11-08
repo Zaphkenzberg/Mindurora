@@ -16,6 +16,7 @@ import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
 
+import static mindustry.AuroraUtil.*;
 import static mindustry.Vars.*;
 
 /**
@@ -149,7 +150,7 @@ public class AuroraNet {
         }
         for (String ip : all) {
             if (sb.length() > 1) sb.append(',');
-            sb.append(js(ip));
+            sb.append(jsonStr(ip));
         }
         return sb.append(']').toString();
     }
@@ -346,34 +347,8 @@ public class AuroraNet {
         return out[0];
     }
 
-    /** UI text from the bundles ("aurora." keys; English by default, Ukrainian in bundle_uk_UA) — Текст інтерфейсу з бандлів (ключі "aurora."; за замовчуванням англійська, українська в bundle_uk_UA). */
-    public static String tr(String key, Object... args) {
-        return args.length == 0 ? Core.bundle.get("aurora." + key) : Core.bundle.format("aurora." + key, args);
-    }
-
     static JsonValue parse(Res r) {
         return new JsonReader().parse(new String(r.body, StandardCharsets.UTF_8));
-    }
-
-    /** JSON string with escaping — Рядок JSON з екрануванням. */
-    static String js(String s) {
-        if (s == null) s = "";
-        StringBuilder sb = new StringBuilder("\"");
-        for (char c : s.toCharArray()) {
-            if (c == '"' || c == '\\') sb.append('\\').append(c);
-            else if (c < 0x20) sb.append(String.format("\\u%04x", (int) c));
-            else sb.append(c);
-        }
-        return sb.append('"').toString();
-    }
-
-    /** URL-encode a query value — Закодувати значення для URL. */
-    static String q(String s) {
-        try {
-            return URLEncoder.encode(s, "UTF-8");
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
     }
 
     /** Sector id used by Authority: "planet-id" — id сектора для Authority: "планета-номер". */
@@ -430,7 +405,7 @@ public class AuroraNet {
 
     /** sectorPath + who we are + our key for this sector — sectorPath + хто ми + наш ключ до цього сектора. */
     static String hostPath(Sector s, String action) {
-        return sectorPath(s, action) + "?player=" + q(me()) + "&key=" + q(hostKeys.getOrDefault(sid(s), ""));
+        return sectorPath(s, action) + "?player=" + urlEnc(me()) + "&key=" + urlEnc(hostKeys.getOrDefault(sid(s), ""));
     }
 
     static String sectorPath(Sector s, String action) {
@@ -505,8 +480,8 @@ public class AuroraNet {
     }
 
     static Claim claim(Sector s) throws Exception {
-        String body = "{\"ip\":" + js(myIp()) + ",\"ips\":" + myIpsJson() + ",\"port\":" + myPort() + ",\"player\":" + js(me()) + ",\"name\":" + js(myName())
-            + ",\"key\":" + js(hostKeys.getOrDefault(sid(s), "")) + "}";
+        String body = "{\"ip\":" + jsonStr(myIp()) + ",\"ips\":" + myIpsJson() + ",\"port\":" + myPort() + ",\"player\":" + jsonStr(me()) + ",\"name\":" + jsonStr(myName())
+            + ",\"key\":" + jsonStr(hostKeys.getOrDefault(sid(s), "")) + "}";
         Res res = request("POST", sectorPath(s, "claim"), body.getBytes(StandardCharsets.UTF_8));
         if (res.code == 403) {
             // Planet host removed us: banned, or kicked (may come back in N s) — Власник планети нас видалив: бан або кік (можна повернутись через N с)
@@ -954,8 +929,8 @@ public class AuroraNet {
             if (!p.isLocal() && p.con == null) return;
             if (sb.length() > 1) sb.append(',');
             String uuid = p.isLocal() ? me() : p.con.uuid, ip = p.isLocal() ? "" : plainIp(p.con.address);
-            sb.append("{\"uuid\":").append(js(uuid)).append(",\"ip\":").append(js(ip))
-                .append(",\"name\":").append(js(Strings.stripColors(p.name))).append(",\"pid\":").append(p.id).append('}');
+            sb.append("{\"uuid\":").append(jsonStr(uuid)).append(",\"ip\":").append(jsonStr(ip))
+                .append(",\"name\":").append(jsonStr(Strings.stripColors(p.name))).append(",\"pid\":").append(p.id).append('}');
         });
         return sb.append(']').toString().getBytes(StandardCharsets.UTF_8);
     }

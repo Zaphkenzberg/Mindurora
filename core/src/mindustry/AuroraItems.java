@@ -10,8 +10,8 @@ import static mindustry.Vars.*;
 import static mindustry.AuroraNet.current;
 import static mindustry.AuroraNet.hosting;
 import static mindustry.AuroraNet.itemsActive;
-import static mindustry.AuroraNet.js;
-import static mindustry.AuroraNet.q;
+import static mindustry.AuroraUtil.jsonStr;
+import static mindustry.AuroraUtil.urlEnc;
 import static mindustry.AuroraNet.sid;
 import static mindustry.AuroraNet.get;
 import static mindustry.AuroraNet.post;
@@ -93,10 +93,10 @@ public class AuroraItems {
         StringBuilder items = new StringBuilder("{");
         for (var e : need) {
             if (items.length() > 1) items.append(',');
-            items.append(js(e.key.name)).append(':').append(e.value);
+            items.append(jsonStr(e.key.name)).append(':').append(e.value);
         }
-        String extra = research == null ? "" : ",\"research\":" + js(research) + ",\"by\":" + js(myName());
-        return "{\"id\":" + js(java.util.UUID.randomUUID().toString()) + ",\"items\":" + items.append('}') + extra + "}";
+        String extra = research == null ? "" : ",\"research\":" + jsonStr(research) + ",\"by\":" + jsonStr(myName());
+        return "{\"id\":" + jsonStr(java.util.UUID.randomUUID().toString()) + ",\"items\":" + items.append('}') + extra + "}";
     }
 
     /** Spend on the calling (background) thread: answer code, or -1 = no connection — Списання в поточному (фоновому) потоці: код відповіді, або -1 = нема зв'язку. */
@@ -136,7 +136,7 @@ public class AuroraItems {
                 int a = core.items.get(it);
                 if (a <= 0) continue;
                 if (sb.length() > 1) sb.append(',');
-                sb.append(js(it.name)).append(':').append(a);
+                sb.append(jsonStr(it.name)).append(':').append(a);
             }
         }
         return sb.append('}').toString();
@@ -202,11 +202,11 @@ public class AuroraItems {
                                 putBytes(hostPath(s, "items"), body.getBytes(StandardCharsets.UTF_8));
                                 if (needSave) {
                                     if (pack == null) throw new RuntimeException("no snapshot");
-                                    putBytes(hostPath(s, "save") + "&ops=" + q(acked.toString()), pack[0]);
+                                    putBytes(hostPath(s, "save") + "&ops=" + urlEnc(acked.toString()), pack[0]);
                                     putBytes(hostPath(s, "info"), pack[1]);
                                     Log.info("Aurora: sector @ saved to Authority (spend)", sid(s));
                                 } else if (acked.length() > 0) {
-                                    Res a = post(hostPath(s, "ack") + "&ids=" + q(acked.toString()));
+                                    Res a = post(hostPath(s, "ack") + "&ids=" + urlEnc(acked.toString()));
                                     if (a.code != 200) Log.warn("Aurora: ack rejected @", a.code);
                                 }
                             } catch (Exception e) {
