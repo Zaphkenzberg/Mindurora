@@ -135,7 +135,7 @@ public class AuroraNet {
 
     /** All our LAN / Tailscale IPv4 addresses, so Authority can give each joining player the one on his network — Усі наші LAN / Tailscale IPv4, щоб Authority дав кожному гравцю адресу в його мережі. */
     static String myIpsJson() {
-        StringBuilder sb = new StringBuilder("[");
+        AuroraJson out = AuroraJson.arr();
         java.util.LinkedHashSet<String> all = new java.util.LinkedHashSet<>();
         String s = Core.settings.getString("aurora-ip", "");
         if (!s.isEmpty() && !s.equals("127.0.0.1")) all.add(s);
@@ -148,11 +148,8 @@ public class AuroraNet {
             }
         } catch (Exception ignored) {
         }
-        for (String ip : all) {
-            if (sb.length() > 1) sb.append(',');
-            sb.append(jsonStr(ip));
-        }
-        return sb.append(']').toString();
+        for (String ip : all) out.add(ip);
+        return out.toString();
     }
 
     public static int myPort() {
@@ -480,8 +477,8 @@ public class AuroraNet {
     }
 
     static Claim claim(Sector s) throws Exception {
-        String body = "{\"ip\":" + jsonStr(myIp()) + ",\"ips\":" + myIpsJson() + ",\"port\":" + myPort() + ",\"player\":" + jsonStr(me()) + ",\"name\":" + jsonStr(myName())
-            + ",\"key\":" + jsonStr(hostKeys.getOrDefault(sid(s), "")) + "}";
+        String body = AuroraJson.obj().put("ip", myIp()).putRaw("ips", myIpsJson()).put("port", myPort()).put("player", me()).put("name", myName())
+            .put("key", hostKeys.getOrDefault(sid(s), "")).toString();
         Res res = request("POST", sectorPath(s, "claim"), body.getBytes(StandardCharsets.UTF_8));
         if (res.code == 403) {
             // Planet host removed us: banned, or kicked (may come back in N s) — Власник планети нас видалив: бан або кік (можна повернутись через N с)
@@ -941,15 +938,13 @@ public class AuroraNet {
      * pid = id сутності, щоб власник планети міг вказати на гравця, якого тут бачить. Головний потік.
      */
     static byte[] heartbeatBody() {
-        StringBuilder sb = new StringBuilder("[");
+        AuroraJson a = AuroraJson.arr();
         Groups.player.each(p -> {
             if (!p.isLocal() && p.con == null) return;
-            if (sb.length() > 1) sb.append(',');
             String uuid = p.isLocal() ? me() : p.con.uuid, ip = p.isLocal() ? "" : plainIp(p.con.address);
-            sb.append("{\"uuid\":").append(jsonStr(uuid)).append(",\"ip\":").append(jsonStr(ip))
-                .append(",\"name\":").append(jsonStr(Strings.stripColors(p.name))).append(",\"pid\":").append(p.id).append('}');
+            a.add(AuroraJson.obj().put("uuid", uuid).put("ip", ip).put("name", Strings.stripColors(p.name)).put("pid", p.id));
         });
-        return sb.append(']').toString().getBytes(StandardCharsets.UTF_8);
+        return a.toString().getBytes(StandardCharsets.UTF_8);
     }
 
     /** Heartbeat answer: {"kick":[uuid...]} — players the planet host removed — Відповідь heartbeat: гравці, яких видалив власник планети. */

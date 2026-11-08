@@ -10,7 +10,6 @@ import static mindustry.Vars.*;
 import static mindustry.AuroraNet.current;
 import static mindustry.AuroraNet.hosting;
 import static mindustry.AuroraNet.itemsActive;
-import static mindustry.AuroraUtil.jsonStr;
 import static mindustry.AuroraUtil.urlEnc;
 import static mindustry.AuroraNet.sid;
 import static mindustry.AuroraNet.get;
@@ -90,13 +89,11 @@ public class AuroraItems {
 
     /** research = content being paid for: Authority checks the full cost and opens it — research = те, за що платимо: Authority перевіряє повну ціну й відкриває його. */
     static String spendBody(ObjectIntMap<Item> need, String research) {
-        StringBuilder items = new StringBuilder("{");
-        for (var e : need) {
-            if (items.length() > 1) items.append(',');
-            items.append(jsonStr(e.key.name)).append(':').append(e.value);
-        }
-        String extra = research == null ? "" : ",\"research\":" + jsonStr(research) + ",\"by\":" + jsonStr(myName());
-        return "{\"id\":" + jsonStr(java.util.UUID.randomUUID().toString()) + ",\"items\":" + items.append('}') + extra + "}";
+        AuroraJson items = AuroraJson.obj();
+        for (var e : need) items.put(e.key.name, e.value);
+        AuroraJson o = AuroraJson.obj().put("id", java.util.UUID.randomUUID().toString()).put("items", items);
+        if (research != null) o.put("research", research).put("by", myName());
+        return o.toString();
     }
 
     /** Spend on the calling (background) thread: answer code, or -1 = no connection — Списання в поточному (фоновому) потоці: код відповіді, або -1 = нема зв'язку. */
@@ -129,17 +126,15 @@ public class AuroraItems {
 
     /** Our core items as JSON (main thread) — Ресурси нашого ядра в JSON (головний потік). */
     static String stockJson() {
-        StringBuilder sb = new StringBuilder("{");
+        AuroraJson o = AuroraJson.obj();
         var core = state.rules.defaultTeam.core();
         if (core != null) {
             for (Item it : content.items()) {
                 int a = core.items.get(it);
-                if (a <= 0) continue;
-                if (sb.length() > 1) sb.append(',');
-                sb.append(jsonStr(it.name)).append(':').append(a);
+                if (a > 0) o.put(it.name, a);
             }
         }
-        return sb.append('}').toString();
+        return o.toString();
     }
 
     /**

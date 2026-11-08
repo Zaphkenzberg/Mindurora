@@ -19,7 +19,6 @@ import java.util.concurrent.*;
  * — Вбудований Authority: "мозок" спільної планети Aurora, сервер ArcNet (TCP) у грі хоста планети.
  * Тримає, хто хостить який сектор, сейви секторів, спільні дослідження і спільний склад.
  */
-import static mindustry.AuroraUtil.jsonStr;
 
 public class AuroraAuthority {
 
@@ -163,8 +162,8 @@ public class AuroraAuthority {
 
         /** Player UUID is never sent: it is the player's "key" to the sector — UUID гравця не віддаємо: це його "ключ" до сектора. */
         String json(long now) {
-            return "{\"ip\":" + jsonStr(ip) + ",\"port\":" + port + ",\"lastSeen\":" + lastSeen + ",\"ready\":" + ready
-                + ",\"state\":" + jsonStr(STATE_NAMES[stateAt(now)]) + "}";
+            return AuroraJson.obj().put("ip", ip).put("port", port).put("lastSeen", lastSeen).put("ready", ready)
+                .put("state", STATE_NAMES[stateAt(now)]).toString();
         }
     }
 
@@ -636,24 +635,15 @@ public class AuroraAuthority {
 
     static synchronized void saveEconomy() {
         try {
-            StringBuilder sb = new StringBuilder("{\"stock\":{");
-            boolean first = true;
-            for (Map.Entry<String, Map<String, Integer>> e : stock.entrySet()) {
-                if (!first) sb.append(',');
-                first = false;
-                sb.append(jsonStr(e.getKey())).append(':').append(countsJson(e.getValue()));
-            }
-            sb.append("},\"pending\":{");
-            first = true;
+            AuroraJson st = AuroraJson.obj();
+            for (Map.Entry<String, Map<String, Integer>> e : stock.entrySet()) st.putRaw(e.getKey(), countsJson(e.getValue()));
+            AuroraJson pe = AuroraJson.obj();
             for (Map.Entry<String, CopyOnWriteArrayList<Op>> e : pending.entrySet()) {
                 if (e.getValue().isEmpty()) continue;
-                if (!first) sb.append(',');
-                first = false;
-                sb.append(jsonStr(e.getKey())).append(':').append(opsJson(e.getValue()));
+                pe.putRaw(e.getKey(), opsJson(e.getValue()));
             }
-            sb.append("}}");
             // Temp file first, then replace: a crash never leaves a cut JSON — Спершу тимчасовий файл, потім заміна: краш не лишить обрізаний JSON
-            writeAtomic(dir().child("economy.json"), sb.toString());
+            writeAtomic(dir().child("economy.json"), AuroraJson.obj().put("stock", st).put("pending", pe).toString());
         } catch (Throwable e) {
             Log.err("Aurora economy save failed", e);
         }
@@ -672,7 +662,7 @@ public class AuroraAuthority {
             // Banned on this planet: a clear answer (not a dropped connection), so his game stops at once
             // — Заблокований на цій планеті: чітка відповідь (а не обірване з'єднання), щоб його гра зупинилась одразу
             if (!fromThisPc(ex) && bannedIps.contains(plainAddr(ex.getRemoteAddress().getAddress()))) {
-                json(ex, 403, "{\"banned\":true}");
+                json(ex, 403, AuroraJson.obj().put("banned", true).toString());
                 return;
             }
 
@@ -689,11 +679,11 @@ public class AuroraAuthority {
 
             // /version is open; everything else needs the same protocol — /version відкритий; решта — лише з тією самою версією протоколу
             if (get && p.length == 2 && p[1].equals("version")) {
-                json(ex, 200, "{\"proto\":" + AuroraWire.PROTOCOL + "}");
+                json(ex, 200, AuroraJson.obj().put("proto", AuroraWire.PROTOCOL).toString());
                 return;
             }
             if (ex.req.proto != AuroraWire.PROTOCOL) {
-                json(ex, 426, "{\"proto\":" + AuroraWire.PROTOCOL + "}");
+                json(ex, 426, AuroraJson.obj().put("proto", AuroraWire.PROTOCOL).toString());
                 return;
             }
 
@@ -706,12 +696,9 @@ public class AuroraAuthority {
 
             if (get && p.length == 2 && path.equals("unlocks")) {
                 // {"name": "who researched", ...}, "" if unknown — {"назва": "хто дослідив", ...}, "" якщо невідомо
-                StringBuilder sb = new StringBuilder("{");
-                for (String s : unlocked) {
-                    if (sb.length() > 1) sb.append(',');
-                    sb.append(jsonStr(s)).append(':').append(jsonStr(unlockedBy.getOrDefault(s, "")));
-                }
-                json(ex, 200, sb.append('}').toString());
+                AuroraJson o = AuroraJson.obj();
+                for (String s : unlocked) o.put(s, unlockedBy.getOrDefault(s, ""));
+                json(ex, 200, o.toString());
 
             } else if (get && p.length == 3 && path.equals("unlock")) {
                 if (!isContent(p[2])) {
@@ -729,46 +716,28 @@ public class AuroraAuthority {
                     if (!by.isEmpty()) unlockedBy.put(p[2], by);
                     saveUnlocks();
                 }
-                json(ex, 200, "{\"name\":" + jsonStr(p[2]) + ",\"unlocked\":true}");
+                json(ex, 200, AuroraJson.obj().put("name", p[2]).put("unlocked", true).toString());
 
             } else if (get && p.length == 2 && path.equals("sectors")) {
                 long now = System.currentTimeMillis();
-                StringBuilder sb = new StringBuilder("{");
+                AuroraJson o = AuroraJson.obj();
                 hosts.forEach((id, h) -> {
-                    if (!h.alive(now)) return;
-                    if (sb.length() > 1) sb.append(',');
-                    sb.append(jsonStr(id)).append(':').append(h.json(now));
+                    if (h.alive(now)) o.putRaw(id, h.json(now));
                 });
-                json(ex, 200, sb.append('}').toString());
+                json(ex, 200, o.toString());
 
             } else if (get && p.length == 2 && path.equals("owner")) {
                 // Who the planet host is: a hash of the uuid (never the uuid itself) + own IPs, so sector hosts can give him admin
                 // — Хто хост планети: хеш uuid (ніколи сам uuid) + власні IP, щоб хости секторів давали йому адмінку
-                StringBuilder sb = new StringBuilder("{\"uuidHash\":").append(jsonStr(sha256(ownerUuid))).append(",\"ips\":[");
-                boolean first = true;
-                for (String ip : ownIps()) {
-                    if (!first) sb.append(',');
-                    first = false;
-                    sb.append(jsonStr(ip));
-                }
-                json(ex, 200, sb.append("]}").toString());
+                AuroraJson ips = AuroraJson.arr();
+                for (String ip : ownIps()) ips.add(ip);
+                json(ex, 200, AuroraJson.obj().put("uuidHash", sha256(ownerUuid)).put("ips", ips).toString());
 
             } else if (get && p.length == 2 && path.equals("bans")) {
-                StringBuilder sb = new StringBuilder("{\"uuids\":[");
-                boolean first = true;
-                for (String u : bans.keySet()) {
-                    if (!first) sb.append(',');
-                    first = false;
-                    sb.append(jsonStr(u));
-                }
-                sb.append("],\"ips\":[");
-                first = true;
-                for (String ip : bannedIps) {
-                    if (!first) sb.append(',');
-                    first = false;
-                    sb.append(jsonStr(ip));
-                }
-                json(ex, 200, sb.append("]}").toString());
+                AuroraJson uuids = AuroraJson.arr(), ips = AuroraJson.arr();
+                for (String u : bans.keySet()) uuids.add(u);
+                for (String ip : bannedIps) ips.add(ip);
+                json(ex, 200, AuroraJson.obj().put("uuids", uuids).put("ips", ips).toString());
 
             } else if (get && p.length == 2 && path.equals("rules")) {
                 // Planet campaign rules set by the planet host: {"serpulo":{...}, ...} — Правила кампанії планети, які задає хост планети
@@ -776,16 +745,13 @@ public class AuroraAuthority {
 
             } else if (get && p.length == 2 && path.equals("mode")) {
                 // Is the planet host in Aurora right now (not normal campaign / own game) — Чи хост планети зараз в Aurora (а не у звичайній кампанії / своїй грі)
-                json(ex, 200, "{\"active\":" + env.planetActive() + "}");
+                json(ex, 200, AuroraJson.obj().put("active", env.planetActive()).toString());
 
             } else if (get && p.length == 3 && path.equals("sectors") && p[2].equals("state")) {
                 // {"id": bits}: 1 core, 2 waves still running, 4 attacking an enemy base — 1 ядро, 2 хвилі ще йдуть, 4 атака на ворожу базу
-                StringBuilder sb = new StringBuilder("{");
-                for (String s : saves) {
-                    if (sb.length() > 1) sb.append(',');
-                    sb.append(jsonStr(s)).append(':').append(infoBits.getOrDefault(s, 1 | 2));
-                }
-                json(ex, 200, sb.append('}').toString());
+                AuroraJson o = AuroraJson.obj();
+                for (String s : saves) o.put(s, infoBits.getOrDefault(s, 1 | 2));
+                json(ex, 200, o.toString());
 
             } else if (p.length == 4 && path.equals("sector") && validSector(p[2])) {
                 sector(ex, m, p[2], p[3], query(uri, "player"), query(uri, "key"));
@@ -1043,10 +1009,10 @@ public class AuroraAuthority {
 
     /** {"banned":true} or {"kicked":seconds left} — {"banned":true} або {"kicked":скільки секунд лишилось}. */
     static String removedJson(String uuid) {
-        if (bans.containsKey(uuid)) return "{\"banned\":true}";
+        if (bans.containsKey(uuid)) return AuroraJson.obj().put("banned", true).toString();
         Long t = kickedUntil.get(uuid);
         long left = t == null ? 0 : Math.max(1, (t - System.currentTimeMillis() + 999) / 1000);
-        return "{\"kicked\":" + left + "}";
+        return AuroraJson.obj().put("kicked", left).toString();
     }
 
     /** Kick from the planet: out of his sector (hosts too), no re-entry for a minute — Видалити з планети: геть із сектора (хостів теж), без повернення хвилину. */
@@ -1142,7 +1108,7 @@ public class AuroraAuthority {
     /** Campaign rules of every planet from the host's own Aurora rules (c2- keys), difficulty clamped to Eradication+
      * — Правила кампанії кожної планети з власних правил Aurora хоста (ключі c2-), складність не нижче Викорінювальної. */
     static synchronized String rulesJson() {
-        StringBuilder sb = new StringBuilder("{");
+        AuroraJson o = AuroraJson.obj();
         for (mindustry.type.Planet pl : Vars.content.planets()) {
             if (pl.sectors.isEmpty() || !pl.allowCampaignRules) continue;
             // Raw bytes + our own Json: Core.settings.getJson would use JsonIO.json, which belongs to the main thread
@@ -1159,10 +1125,9 @@ public class AuroraAuthority {
                 r.sectorInvasion = pl.allowSectorInvasion;
             }
             if (r.difficulty == null || r.difficulty.ordinal() < mindustry.game.Difficulty.eradication.ordinal()) r.difficulty = mindustry.game.Difficulty.eradication;
-            if (sb.length() > 1) sb.append(',');
-            sb.append(jsonStr(pl.name)).append(':').append(rulesJsonWriter.toJson(r, mindustry.game.CampaignRules.class));
+            o.putRaw(pl.name, rulesJsonWriter.toJson(r, mindustry.game.CampaignRules.class));
         }
-        return sb.append('}').toString();
+        return o.toString();
     }
 
     /** /sector/{id}/{action} */
@@ -1233,11 +1198,11 @@ public class AuroraAuthority {
             Log.info("Authority claim @ by @ from @ -> @ | prev=@", id, shortId(mine.player), mine.ip, cur == mine ? "HOST" : "client",
                 prev == null ? "none" : shortId(prev.player) + " age=" + (now - prev.lastSeen) + "ms ready=" + prev.ready);
 
-            if (cur == mine) json(ex, 200, "{\"role\":\"host\",\"key\":" + jsonStr(mine.key) + "}");
-            else if (sameButLocked) json(ex, 200, "{\"role\":\"wait\",\"state\":\"lost\",\"retry\":" + cur.secondsToFree(now) + "}");
-            else if (cur.stateAt(now) == OK) json(ex, 200, "{\"role\":\"client\",\"ip\":" + jsonStr(cur.ipFor(ex.getRemoteAddress().getAddress())) + ",\"port\":" + cur.port + "}");
+            if (cur == mine) json(ex, 200, AuroraJson.obj().put("role", "host").put("key", mine.key).toString());
+            else if (sameButLocked) json(ex, 200, AuroraJson.obj().put("role", "wait").put("state", "lost").put("retry", cur.secondsToFree(now)).toString());
+            else if (cur.stateAt(now) == OK) json(ex, 200, AuroraJson.obj().put("role", "client").put("ip", cur.ipFor(ex.getRemoteAddress().getAddress())).put("port", cur.port).toString());
             // Host is silent: neither join it nor take the sector, wait — Хост мовчить: ні підключатись, ні забирати сектор — чекати
-            else json(ex, 200, "{\"role\":\"wait\",\"state\":" + jsonStr(STATE_NAMES[cur.stateAt(now)]) + ",\"retry\":" + cur.secondsToFree(now) + "}");
+            else json(ex, 200, AuroraJson.obj().put("role", "wait").put("state", STATE_NAMES[cur.stateAt(now)]).put("retry", cur.secondsToFree(now)).toString());
 
         } else if (post && action.equals("heartbeat")) {
             // Body (new clients): the sector's players [{uuid, ip, name, pid}], the host himself included — Тіло (нові клієнти): гравці сектора [{uuid, ip, name}]
@@ -1284,15 +1249,11 @@ public class AuroraAuthority {
                 return;
             }
             // Players of this sector to throw out — Гравці цього сектора, яких треба викинути
-            StringBuilder kb = new StringBuilder("{\"kick\":[");
-            boolean first = true;
+            AuroraJson kick = AuroraJson.arr();
             for (String[] pl : sectorPlayers.getOrDefault(id, Collections.emptyList())) {
-                if (!removed(pl[0]) && !bannedIps.contains(pl[1])) continue;
-                if (!first) kb.append(',');
-                first = false;
-                kb.append(jsonStr(pl[0]));
+                if (removed(pl[0]) || bannedIps.contains(pl[1])) kick.add(pl[0]);
             }
-            json(ex, 200, kb.append("]}").toString());
+            json(ex, 200, AuroraJson.obj().put("kick", kick).toString());
 
         } else if (post && action.equals("release")) {
             boolean[] own = {false};
@@ -1378,7 +1339,7 @@ public class AuroraAuthority {
                 // Something new already, or Authority restarted (counter below the host's): answer now
                 // — Уже є нове, або Authority перезапустився (лічильник менший за хостовий): відповідаємо зараз
                 if (v[0] != since) {
-                    json(ex, 200, "{\"ver\":" + v[0] + "}");
+                    json(ex, 200, AuroraJson.obj().put("ver", v[0]).toString());
                     return;
                 }
                 // Park the request without holding a thread: wake() or the sweeper answers it — Паркуємо запит без зайнятого потоку: відповість wake() або прибиральник
@@ -1475,7 +1436,7 @@ public class AuroraAuthority {
             ver = ++v[0];
             list = waiters.remove(id);
         }
-        if (list != null) for (Waiter w : list) w.ex.finish(200, ("{\"ver\":" + ver + "}").getBytes(StandardCharsets.UTF_8));
+        if (list != null) for (Waiter w : list) w.ex.finish(200, AuroraJson.obj().put("ver", ver).toString().getBytes(StandardCharsets.UTF_8));
     }
 
     /** A host's parked /wait request — Запарковане /wait хоста. */
@@ -1504,7 +1465,7 @@ public class AuroraAuthority {
                     synchronized (v) {
                         ver = v[0];
                     }
-                    w.ex.finish(200, ("{\"ver\":" + ver + "}").getBytes(StandardCharsets.UTF_8));
+                    w.ex.finish(200, AuroraJson.obj().put("ver", ver).toString().getBytes(StandardCharsets.UTF_8));
                 }
                 // Drop the emptied list, under the same lock /wait adds under, so a waiter added right now is not lost
                 // — Прибрати спорожнілий список під тим самим замком, під яким /wait додає, щоб щойно доданий не загубився
@@ -1696,7 +1657,7 @@ public class AuroraAuthority {
             chat.addLast(new String[]{String.valueOf(seq), name, sector, text});
             while (chat.size() > CHAT_KEEP) chat.removeFirst();
         }
-        json(ex, 200, "{\"seq\":" + seq + "}");
+        json(ex, 200, AuroraJson.obj().put("seq", seq).toString());
     }
 
     /**
@@ -1706,22 +1667,17 @@ public class AuroraAuthority {
      * (Authority перезапустився, лічильник з нуля): усе, що є.
      */
     static String chatJson(long since) {
-        StringBuilder sb = new StringBuilder();
         synchronized (chatLock) {
             if (since > chatSeq) since = 0;
-            sb.append("{\"seq\":").append(chatSeq).append(",\"msgs\":[");
+            AuroraJson msgs = AuroraJson.arr();
             int skip = since < 0 ? Math.max(0, chat.size() - CHAT_NEWCOMER) : 0, i = 0;
-            boolean first = true;
             for (String[] m : chat) {
                 if (i++ < skip) continue;
                 if (since >= 0 && Long.parseLong(m[0]) <= since) continue;
-                if (!first) sb.append(',');
-                first = false;
-                sb.append("{\"seq\":").append(m[0]).append(",\"name\":").append(jsonStr(m[1]))
-                    .append(",\"sector\":").append(jsonStr(m[2])).append(",\"text\":").append(jsonStr(m[3])).append('}');
+                msgs.add(AuroraJson.obj().put("seq", Long.parseLong(m[0])).put("name", m[1]).put("sector", m[2]).put("text", m[3]));
             }
+            return AuroraJson.obj().put("seq", chatSeq).put("msgs", msgs).toString();
         }
-        return sb.append("]}").toString();
     }
 
     /** No color tags (nobody can fake a system message), no control chars, trimmed and cut — Без тегів кольору (ніхто не підробить системне повідомлення), без керівних символів, обрізано. */
@@ -1957,21 +1913,15 @@ public class AuroraAuthority {
     }
 
     static String countsJson(Map<String, Integer> m) {
-        StringBuilder sb = new StringBuilder("{");
-        m.forEach((k, v) -> {
-            if (sb.length() > 1) sb.append(',');
-            sb.append(jsonStr(k)).append(':').append(v);
-        });
-        return sb.append('}').toString();
+        AuroraJson o = AuroraJson.obj();
+        m.forEach((k, v) -> o.put(k, v));
+        return o.toString();
     }
 
     static String opsJson(List<Op> ops) {
-        StringBuilder sb = new StringBuilder("[");
-        for (Op o : ops) {
-            if (sb.length() > 1) sb.append(',');
-            sb.append("{\"id\":").append(jsonStr(o.id)).append(",\"item\":").append(jsonStr(o.item)).append(",\"amount\":").append(o.amount).append('}');
-        }
-        return sb.append(']').toString();
+        AuroraJson a = AuroraJson.arr();
+        for (Op o : ops) a.add(AuroraJson.obj().put("id", o.id).put("item", o.item).put("amount", o.amount));
+        return a.toString();
     }
 
     static void json(Exchange ex, int code, String body) throws IOException {

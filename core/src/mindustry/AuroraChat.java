@@ -18,7 +18,6 @@ import static mindustry.AuroraNet.current;
 import static mindustry.AuroraNet.me;
 import static mindustry.AuroraNet.myName;
 import static mindustry.AuroraNet.sid;
-import static mindustry.AuroraUtil.jsonStr;
 import static mindustry.AuroraUtil.urlEnc;
 import static mindustry.AuroraUtil.tr;
 import static mindustry.AuroraNet.parse;
@@ -47,7 +46,7 @@ import mindustry.AuroraNet.Res;
                 return true;
             }
             Sector s = current;
-            String body = "{\"name\":" + jsonStr(myName()) + ",\"sector\":" + jsonStr(s == null ? "" : sid(s)) + ",\"text\":" + jsonStr(text) + "}";
+            String body = AuroraJson.obj().put("name", myName()).put("sector", s == null ? "" : sid(s)).put("text", text).toString();
             String path = "/chat?player=" + urlEnc(me());
             mainExecutor.submit(() -> {
                 String err = null;
