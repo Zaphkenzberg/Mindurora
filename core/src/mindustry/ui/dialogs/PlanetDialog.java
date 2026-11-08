@@ -458,6 +458,22 @@ public class PlanetDialog extends BaseDialog implements PlanetInterfaceRenderer{
 
     @Override
     public void renderSectors(Planet planet){
+        //AURORA: sector frames, fills and the live runner lie at the same height over the planet. With depth writes on they
+        //fight for the depth buffer, and on phones (coarse 16-bit depth) the player's own sector flickered. They still test
+        //against the planet, so the far side stays hidden, but among themselves they just overlap in drawing order.
+        //— Рамки, заливки й бігунок секторів лежать на одній висоті над планетою. З записом глибини вони б'ються за буфер
+        //глибини, і на телефонах (грубий 16-бітний буфер) власний сектор гравця мерехтів. Планета їх і далі ховає,
+        //тож зворотний бік не просвічує, але між собою вони просто накладаються в порядку малювання.
+        planets.batch.flush(Gl.triangles);
+        Gl.depthMask(false);
+
+        //AURORA: the current sector's fill goes first, under the frames, so its frame stays on top as before
+        //— заливка поточного сектора йде першою, під рамками, тож його рамка лишається зверху, як раніше
+        Sector current = Vars.state.getSector() != null && Vars.state.getSector().isBeingPlayed() && Vars.state.getSector().planet == state.planet ? Vars.state.getSector() : null;
+
+        if(current != null){
+            planets.fill(current, hoverColor.write(Tmp.c1).mulA(state.uiAlpha), -0.001f);
+        }
 
         //draw all sector stuff
         if(state.uiAlpha > 0.01f){
@@ -488,12 +504,6 @@ public class PlanetDialog extends BaseDialog implements PlanetInterfaceRenderer{
             }
         }
 
-        Sector current = Vars.state.getSector() != null && Vars.state.getSector().isBeingPlayed() && Vars.state.getSector().planet == state.planet ? Vars.state.getSector() : null;
-
-        if(current != null){
-            planets.fill(current, hoverColor.write(Tmp.c1).mulA(state.uiAlpha), -0.001f);
-        }
-
         //draw hover border
         if(hovered != null){
             planets.fill(hovered, hoverColor.write(Tmp.c1).mulA(state.uiAlpha), -0.001f);
@@ -507,6 +517,7 @@ public class PlanetDialog extends BaseDialog implements PlanetInterfaceRenderer{
         }
 
         planets.batch.flush(Gl.triangles);
+        Gl.depthMask(true); //AURORA: see the top of renderSectors — див. початок renderSectors
     }
 
     @Override
