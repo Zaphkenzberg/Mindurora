@@ -121,7 +121,7 @@ public class ResearchDialog extends BaseDialog{
             checkMargin();
             Core.app.post(this::checkMargin);
             // AURORA: ask the sector hosts for fresh stock right away — Одразу попросити в хостів секторів свіжий склад
-            mindustry.AuroraNet.refreshItems(true);
+            mindustry.AuroraItems.refreshItems(true);
 
             Planet currPlanet = ui.planet.isShown() ?
                 ui.planet.state.planet :
@@ -245,7 +245,7 @@ public class ResearchDialog extends BaseDialog{
 
                 if(aurora){
                     // AURORA: shared stock from Authority instead of the sum of sectors — Спільний склад з Authority замість суми секторів
-                    mindustry.AuroraNet.globalItems().each((item, amount) -> {
+                    mindustry.AuroraItems.globalItems().each((item, amount) -> {
                         values[item.id] += Math.max(amount, 0);
                         total += Math.max(amount, 0);
                     });
@@ -646,11 +646,11 @@ public class ResearchDialog extends BaseDialog{
             }
 
             auroraWaiting = true;
-            mindustry.AuroraNet.spendConfirmed(need, node.content.name, ok -> {
+            mindustry.AuroraItems.spendConfirmed(need, node.content.name, ok -> {
                 auroraWaiting = false;
                 if(!ok){
                     ui.showInfoToast(mindustry.AuroraNet.tr("research.refused"), 4f);
-                    mindustry.AuroraNet.refreshItems(true);
+                    mindustry.AuroraItems.refreshItems(true);
                     return;
                 }
 
@@ -669,7 +669,7 @@ public class ResearchDialog extends BaseDialog{
 
                 unlock(node);
                 node.save();
-                mindustry.AuroraNet.refreshItems(true);
+                mindustry.AuroraItems.refreshItems(true);
 
                 Core.scene.act();
                 rebuild(shine);
