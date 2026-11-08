@@ -1506,6 +1506,11 @@ public class AuroraAuthority {
                     }
                     w.ex.finish(200, ("{\"ver\":" + ver + "}").getBytes(StandardCharsets.UTF_8));
                 }
+                // Drop the emptied list, under the same lock /wait adds under, so a waiter added right now is not lost
+                // — Прибрати спорожнілий список під тим самим замком, під яким /wait додає, щоб щойно доданий не загубився
+                synchronized (v) {
+                    if (e.getValue().isEmpty()) waiters.remove(e.getKey(), e.getValue());
+                }
             }
         } catch (Throwable t) {
             Log.err("Aurora: expireWaiters failed", t);

@@ -797,8 +797,13 @@ public class AuroraNet {
                     Res r = get(hostPath(s, "wait") + "&since=" + since);
                     if (gen != waitGen) break;
                     if (r.code == 200) {
-                        since = parse(r).getLong("ver", since);
-                        Core.app.post(() -> {
+                        // Only a real wake (the counter moved) syncs; a timed-out wait just waits again. The 5 s stockTask
+                        // stays as the fallback — Синхронізує лише справжнє пробудження (лічильник змінився); /wait, що
+                        // вийшов за часом, просто чекає знову. Запасним лишається stockTask кожні 5 с
+                        long ver = parse(r).getLong("ver", since);
+                        boolean woke = ver != since;
+                        since = ver;
+                        if (woke) Core.app.post(() -> {
                             if (hosting && current == s) AuroraItems.syncStock(s);
                         });
                     } else if (r.code == 404) {
