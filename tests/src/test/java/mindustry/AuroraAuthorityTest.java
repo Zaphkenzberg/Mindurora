@@ -153,43 +153,43 @@ public class AuroraAuthorityTest {
 
     @Test
     void oneSectorPaysAll() {
-        var need = map("copper", 100);
-        var a = avail("copper", map("s1", 500));
-        var out = splitSpend(need, a);
+        Map<String, Integer> need = map("copper", 100);
+        Map<String, Map<String, Integer>> a = avail("copper", map("s1", 500));
+        Map<String, Map<String, Integer>> out = splitSpend(need, a);
         assertEquals(map("s1", 100), out.get("copper"));
     }
 
     @Test
     void splitIsProportional() {
-        var need = map("copper", 100);
-        var a = avail("copper", map("s1", 300, "s2", 100));
-        var out = splitSpend(need, a);
+        Map<String, Integer> need = map("copper", 100);
+        Map<String, Map<String, Integer>> a = avail("copper", map("s1", 300, "s2", 100));
+        Map<String, Map<String, Integer>> out = splitSpend(need, a);
         assertEquals(map("s1", 75, "s2", 25), out.get("copper"));
     }
 
     @Test
     void exactTotalEmptiesEverySector() {
-        var need = map("lead", 400);
-        var a = avail("lead", map("s1", 150, "s2", 250));
-        var out = splitSpend(need, a);
+        Map<String, Integer> need = map("lead", 400);
+        Map<String, Map<String, Integer>> a = avail("lead", map("s1", 150, "s2", 250));
+        Map<String, Map<String, Integer>> out = splitSpend(need, a);
         assertEquals(map("s1", 150, "s2", 250), out.get("lead"));
     }
 
     @Test
     void roundingNeverOverpays() {
-        var need = map("silicon", 2);
-        var a = avail("silicon", map("s1", 1, "s2", 1, "s3", 1));
-        var out = splitSpend(need, a);
+        Map<String, Integer> need = map("silicon", 2);
+        Map<String, Map<String, Integer>> a = avail("silicon", map("s1", 1, "s2", 1, "s3", 1));
+        Map<String, Map<String, Integer>> out = splitSpend(need, a);
         assertValidSplit(need, a, out);
     }
 
     @Test
     void severalItemsAreSplitIndependently() {
-        var need = map("copper", 10, "lead", 6);
+        Map<String, Integer> need = map("copper", 10, "lead", 6);
         Map<String, Map<String, Integer>> a = new LinkedHashMap<>();
         a.put("copper", map("s1", 10, "s2", 10));
         a.put("lead", map("s2", 6));
-        var out = splitSpend(need, a);
+        Map<String, Map<String, Integer>> out = splitSpend(need, a);
         assertValidSplit(need, a, out);
         assertEquals(map("s2", 6), out.get("lead"));
     }
@@ -198,8 +198,8 @@ public class AuroraAuthorityTest {
     void hugeStocksDoNotOverflow() {
         // two sectors with 2 billion each: the int total used to overflow and nothing was taken
         // — два сектори по 2 мільярди: сума в int переповнювалась, і нічого не знімалось
-        var need = map("copper", 2_000_000_000);
-        var a = avail("copper", map("s1", 2_000_000_000, "s2", 2_000_000_000));
+        Map<String, Integer> need = map("copper", 2_000_000_000);
+        Map<String, Map<String, Integer>> a = avail("copper", map("s1", 2_000_000_000, "s2", 2_000_000_000));
         assertValidSplit(need, a, splitSpend(need, a));
     }
 
@@ -215,8 +215,8 @@ public class AuroraAuthorityTest {
                 per.put("s" + i, a);
                 total += a;
             }
-            var need = map("copper", 1 + r.nextInt((int) Math.min(total, Integer.MAX_VALUE)));
-            var a = avail("copper", per);
+            Map<String, Integer> need = map("copper", 1 + r.nextInt((int) Math.min(total, Integer.MAX_VALUE)));
+            Map<String, Map<String, Integer>> a = avail("copper", per);
             assertValidSplit(need, a, splitSpend(need, a));
         }
     }
