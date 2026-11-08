@@ -54,7 +54,7 @@ public class CampaignRulesDialog extends BaseDialog{
                     // Aurora: only Eradication..Nightmare — Aurora: лише Викорінювальна..Кошмар
                     if(Vars.auroraSlot() && diff.ordinal() < Difficulty.eradication.ordinal()) continue;
                     // Guest: the planet host decides — Гість: вирішує хост планети
-                    boolean locked = mindustry.AuroraNet.rulesFromHost();
+                    boolean locked = mindustry.AuroraRules.rulesFromHost();
                     t.button(diff.localized(), style, () -> {
                         if(!locked) rules.difficulty = diff;
                     }).group(group).checked(b -> rules.difficulty == diff).disabled(b -> locked && rules.difficulty != diff)
@@ -65,7 +65,7 @@ public class CampaignRulesDialog extends BaseDialog{
                     }
                 }
             }).left().fill(false).expand(false, false).row();
-            if(mindustry.AuroraNet.rulesFromHost()) current.add(mindustry.AuroraNet.tr("rules.fromhost")).left().row();
+            if(mindustry.AuroraRules.rulesFromHost()) current.add(mindustry.AuroraNet.tr("rules.fromhost")).left().row();
 
             if(planet.allowSectorInvasion){
                 check("@rules.invasions", b -> rules.sectorInvasion = b, () -> rules.sectorInvasion);
@@ -83,7 +83,7 @@ public class CampaignRulesDialog extends BaseDialog{
                 String[] names = {"@rules.daynight.planet", "@rules.daynight.night", "@rules.daynight.cycle"};
                 for(int i = 0; i < names.length; i++){
                     int mode = i;
-                    boolean locked = mindustry.AuroraNet.rulesFromHost();
+                    boolean locked = mindustry.AuroraRules.rulesFromHost();
                     t.button(names[i], Styles.flatTogglet, () -> {
                         if(!locked) rules.dayNight = mode;
                     }).group(group).checked(b -> rules.dayNight == mode).disabled(b -> locked && rules.dayNight != mode);
@@ -119,7 +119,7 @@ public class CampaignRulesDialog extends BaseDialog{
     void check(String text, Boolc cons, Boolp prov, Boolp condition){
         String infoText = text.substring(1) + ".info";
         // Guest: read-only, follows the planet host's value — Гість: лише перегляд, слідує за значенням хоста планети
-        boolean locked = mindustry.AuroraNet.rulesFromHost();
+        boolean locked = mindustry.AuroraRules.rulesFromHost();
         var cell = current.check(text, b -> {
             if(!locked) cons.get(b);
         }).checked(prov.get()).update(a -> {
