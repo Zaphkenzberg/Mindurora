@@ -28,15 +28,8 @@ public class AuroraNet {
 
     // ---------- Protocol version — Версія протоколу ----------
 
-    /**
-     * Version of the game <-> Authority protocol. BUMP by 1 whenever request/response formats change
-     * or a required endpoint is added. Different versions refuse to talk: players see "update the build".
-     * — Версія протоколу гра <-> Authority. ЗБІЛЬШУЙ на 1, коли міняєш формат запитів/відповідей
-     * або додаєш обов'язковий ендпоінт. Різні версії не розмовляють: гравці бачать "оновіть білд".
-     */
-    // 4: Authority over ArcNet instead of HTTP; 5: research opens only through a paid /spend; 6: per-sector host key
-    // 4: Authority через ArcNet замість HTTP; 5: дослідження відкривається лише через оплачений /spend; 6: ключ хоста на сектор
-    public static final int PROTOCOL = 6;
+    /** Protocol version, shared with Authority: see AuroraWire.PROTOCOL — Версія протоколу, спільна з Authority: див. AuroraWire.PROTOCOL. */
+    public static final int PROTOCOL = AuroraWire.PROTOCOL;
 
     static long lastProtoMsg;
     /** Don't pop up the version dialog for this thread's requests (server list probe) — Не показувати вікно версії для запитів цього потоку (перевірка списку серверів). */
@@ -214,6 +207,69 @@ public class AuroraNet {
             Core.settings.put("aurora-owner-secret", s);
         }
         return s;
+    }
+
+    /**
+     * What our own Authority needs from this game. Authority asks it on every use, so a password changed while the
+     * planet runs takes effect at once.
+     * — Те, що нашому Authority потрібно від цієї гри. Authority питає щоразу, тож пароль, змінений під час гри, діє одразу.
+     */
+    static final AuroraAuthority.Env authorityEnv = new AuroraAuthority.Env() {
+        @Override
+        public String hostToken() {
+            return AuroraNet.hostToken();
+        }
+
+        @Override
+        public String ownerSecret() {
+            return AuroraNet.ownerSecret();
+        }
+
+        @Override
+        public String ownerUuid() {
+            return platform.getUUID();
+        }
+
+        @Override
+        public boolean planetActive() {
+            return campaignSlot == slotAurora;
+        }
+
+        @Override
+        public boolean advertise() {
+            // our sector server answers LAN discovery itself — наш сервер сектора сам відповідає на пошук у LAN
+            return planetActive() && !net.server();
+        }
+
+        @Override
+        public String hostName() {
+            return player == null ? "Aurora" : player.name;
+        }
+
+        @Override
+        public String discoveryDesc() {
+            return tr("discovery.desc");
+        }
+
+        @Override
+        public int gamePort() {
+            return Core.settings.getInt("port", port);
+        }
+    };
+
+    /** Start our own Authority; true if it runs — Запустити свій Authority; true, якщо працює. */
+    public static boolean startAuthority() {
+        boolean ok = AuroraAuthority.start(authorityEnv);
+        // The friend's Authority URL is not touched: authority() uses 127.0.0.1 on our own planet
+        // — Адресу Authority друга не чіпаємо: authority() на своїй планеті сам бере 127.0.0.1
+        if (ok) localAuthority = true;
+        return ok;
+    }
+
+    /** Stop our own Authority — Зупинити свій Authority. */
+    static void stopAuthority() {
+        AuroraAuthority.stop();
+        localAuthority = false;
     }
 
     public static void setHostToken(String t) {
@@ -1069,7 +1125,7 @@ public class AuroraNet {
                 Log.err("shutdown: upload queue did not finish in time", e);
             }
         }
-        if (localAuthority) AuroraAuthority.stop(); // snapshot/release first, then stop — спершу знімок/release, потім stop
+        if (localAuthority) stopAuthority(); // snapshot/release first, then stop — спершу знімок/release, потім stop
         AuroraWire.closeAll();
     }
 

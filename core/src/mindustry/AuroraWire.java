@@ -297,6 +297,16 @@ public class AuroraWire {
     public static final int DEFAULT_PORT = 8443;
 
     /**
+     * Version of the game <-> Authority protocol. BUMP by 1 whenever request/response formats change
+     * or a required endpoint is added. Different versions refuse to talk: players see "update the build".
+     * — Версія протоколу гра <-> Authority. ЗБІЛЬШУЙ на 1, коли міняєш формат запитів/відповідей
+     * або додаєш обов'язковий ендпоінт. Різні версії не розмовляють: гравці бачать "оновіть білд".
+     */
+    // 4: Authority over ArcNet instead of HTTP; 5: research opens only through a paid /spend; 6: per-sector host key
+    // 4: Authority через ArcNet замість HTTP; 5: дослідження відкривається лише через оплачений /spend; 6: ключ хоста на сектор
+    public static final int PROTOCOL = 6;
+
+    /**
      * Normalizes an Authority address to "host:port" ("[v6]:port" for IPv6). Also reads the old "http://host:port/" form
      * saved by earlier versions; a missing port becomes 8443.
      * — Зводить адресу Authority до "host:port" ("[v6]:port" для IPv6). Читає й стару форму "http://host:port/"

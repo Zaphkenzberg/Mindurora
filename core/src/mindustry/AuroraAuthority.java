@@ -21,6 +21,43 @@ import java.util.concurrent.*;
  */
 public class AuroraAuthority {
 
+    // ---------- What Authority needs from the game — Що Authority потрібно від гри ----------
+
+    /**
+     * Everything Authority asks of the game around it. Authority knows nothing about the client (AuroraNet, the player,
+     * campaign slots): the game hands this in at start(). Methods are called on every use, from Authority threads.
+     * — Усе, що Authority питає в гри навколо. Authority нічого не знає про клієнт (AuroraNet, гравця, слоти кампанії):
+     * гра передає це в start(). Методи викликаються щоразу, з потоків Authority.
+     */
+    public interface Env {
+        /** Password of our planet, "" = none — Пароль нашої планети, "" = без пароля. */
+        String hostToken();
+
+        /** Secret only this PC knows: marks the planet host's own game — Секрет, який знає лише цей ПК: позначає власну гру хоста планети. */
+        String ownerSecret();
+
+        /** The planet host's uuid — uuid хоста планети. */
+        String ownerUuid();
+
+        /** Is the planet host playing Aurora right now — Чи хост планети зараз в Aurora. */
+        boolean planetActive();
+
+        /** Answer LAN discovery now — Відповідати зараз на пошук у LAN. */
+        boolean advertise();
+
+        /** Name shown in "Local servers" — Ім'я в "Локальних серверах". */
+        String hostName();
+
+        /** Description shown in "Local servers" — Опис у "Локальних серверах". */
+        String discoveryDesc();
+
+        /** Game port shown to LAN discovery — Порт гри для пошуку в LAN. */
+        int gamePort();
+    }
+
+    /** Set by start(); kept after stop() so requests still finishing can read it — Ставить start(); лишається після stop(), щоб запити, що ще завершуються, могли його читати. */
+    static volatile Env env;
+
     // ---------- Host lifecycle — Життєвий цикл хоста ----------
 
     /**
@@ -252,13 +289,14 @@ public class AuroraAuthority {
     }
 
     /** Starts the server. True if it is running (already or just now) — Запускає сервер. true, якщо працює (уже або щойно). */
-    public static synchronized boolean start() {
+    public static synchronized boolean start(Env environment) {
         if (server != null) return true;
+        env = environment;
         try {
             int port = Core.settings.getInt("aurora-port", 8443);
             dir().mkdirs(); // the folder must exist before the first write — папка має існувати до першого запису
             load();
-            ownerUuid = Vars.platform.getUUID();
+            ownerUuid = env.ownerUuid();
 
             Server s = new Server(AuroraWire.WRITE_BUF, AuroraWire.OBJ_BUF, new AuroraWire.Serializer());
             // Scope check already at connect time; handle() checks it again per request — Перевірка доступу вже при підключенні; handle() перевіряє ще раз на кожен запит
@@ -284,10 +322,11 @@ public class AuroraAuthority {
             // (тоді відповідає сам сервер гри). Лише multicast: UDP-порт гри належить серверу гри.
             s.setMulticast(Vars.multicastGroup, Vars.multicastPort);
             s.setDiscoveryHandler((address, handler) -> {
-                if (Vars.net.server() || Vars.campaignSlot != Vars.slotAurora || !allowed(address)) return;
+                Env en = env;
+                if (!en.advertise() || !allowed(address)) return;
                 java.nio.ByteBuffer buf = mindustry.net.NetworkIO.writeServerData(
-                    Vars.player == null ? "Aurora" : Vars.player.name, "Aurora", liveCount(), 0,
-                    mindustry.game.Gamemode.survival.ordinal(), 0, AuroraNet.tr("discovery.desc"), "Aurora", Core.settings.getInt("port", Vars.port));
+                    en.hostName(), "Aurora", liveCount(), 0,
+                    mindustry.game.Gamemode.survival.ordinal(), 0, en.discoveryDesc(), "Aurora", en.gamePort());
                 try {
                     handler.respond(buf);
                 } catch (NullPointerException | java.nio.channels.ClosedChannelException ignored) {
@@ -384,9 +423,6 @@ public class AuroraAuthority {
             sweeper = sw;
             boundPort = port;
             server = s;
-            // The friend's Authority URL is not touched: AuroraNet.authority() uses 127.0.0.1 on our own planet
-            // — Адресу Authority друга не чіпаємо: AuroraNet.authority() на своїй планеті сам бере 127.0.0.1
-            AuroraNet.localAuthority = true;
             return true;
         } catch (BindException e) {
             return false;
@@ -416,7 +452,6 @@ public class AuroraAuthority {
         sweeper = null;
         for (List<Waiter> l : waiters.values()) for (Waiter w : l) w.ex.finish(503, new byte[0]);
         waiters.clear();
-        AuroraNet.localAuthority = false;
         hosts.clear();
         linksPerIp.clear();
         connIp.clear();
@@ -598,7 +633,7 @@ public class AuroraAuthority {
                 return;
             }
 
-            String token = AuroraNet.hostToken(); // our planet's password, not the one for friends' planets — пароль нашої планети, а не той, що для планет друзів
+            String token = env.hostToken(); // our planet's password, not the one for friends' planets — пароль нашої планети, а не той, що для планет друзів
             if (!token.isEmpty() && !java.security.MessageDigest.isEqual(token.getBytes(StandardCharsets.UTF_8), ex.password.getBytes(StandardCharsets.UTF_8))) {
                 send(ex, 401, "");
                 return;
@@ -611,11 +646,11 @@ public class AuroraAuthority {
 
             // /version is open; everything else needs the same protocol — /version відкритий; решта — лише з тією самою версією протоколу
             if (get && p.length == 2 && p[1].equals("version")) {
-                json(ex, 200, "{\"proto\":" + AuroraNet.PROTOCOL + "}");
+                json(ex, 200, "{\"proto\":" + AuroraWire.PROTOCOL + "}");
                 return;
             }
-            if (ex.req.proto != AuroraNet.PROTOCOL) {
-                json(ex, 426, "{\"proto\":" + AuroraNet.PROTOCOL + "}");
+            if (ex.req.proto != AuroraWire.PROTOCOL) {
+                json(ex, 426, "{\"proto\":" + AuroraWire.PROTOCOL + "}");
                 return;
             }
 
@@ -698,7 +733,7 @@ public class AuroraAuthority {
 
             } else if (get && p.length == 2 && path.equals("mode")) {
                 // Is the planet host in Aurora right now (not normal campaign / own game) — Чи хост планети зараз в Aurora (а не у звичайній кампанії / своїй грі)
-                json(ex, 200, "{\"active\":" + (Vars.campaignSlot == Vars.slotAurora) + "}");
+                json(ex, 200, "{\"active\":" + env.planetActive() + "}");
 
             } else if (get && p.length == 3 && path.equals("sectors") && p[2].equals("state")) {
                 // {"id": bits}: 1 core, 2 waves still running, 4 attacking an enemy base — 1 ядро, 2 хвилі ще йдуть, 4 атака на ворожу базу
@@ -1977,7 +2012,7 @@ public class AuroraAuthority {
             int cut = t.indexOf('\u0001');
             this.password = cut < 0 ? t : t.substring(0, cut);
             this.owner = cut >= 0 && isLoopback(plainAddr(remote.getAddress()))
-                && java.security.MessageDigest.isEqual(t.substring(cut + 1).getBytes(StandardCharsets.UTF_8), AuroraNet.ownerSecret().getBytes(StandardCharsets.UTF_8));
+                && java.security.MessageDigest.isEqual(t.substring(cut + 1).getBytes(StandardCharsets.UTF_8), env.ownerSecret().getBytes(StandardCharsets.UTF_8));
         }
 
         InetSocketAddress getRemoteAddress() {

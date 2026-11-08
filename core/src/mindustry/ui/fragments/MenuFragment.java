@@ -285,7 +285,7 @@ public class MenuFragment{
     }
     /** AURORA: own planet. Our Authority starts at once; if the port is busy, the settings dialog — Своя планета. Свій Authority стартує одразу; якщо порт зайнятий — вікно налаштувань. */
     void openAurora(){
-        if(!AuroraAuthority.start()){
+        if(!AuroraNet.startAuthority()){
             ui.showInfoToast(mindustry.AuroraNet.tr("authority.startfail", String.valueOf(Core.settings.getInt("aurora-port", 8443))), 5f);
             new mindustry.ui.dialogs.AuroraSettingsDialog(() -> AuroraNet.checkAuthority(this::rebuildMenu)).show();
             return;
