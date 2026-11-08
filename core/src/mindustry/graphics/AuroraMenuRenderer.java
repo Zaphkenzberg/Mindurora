@@ -38,8 +38,13 @@ public class AuroraMenuRenderer implements PlanetRenderer.PlanetInterfaceRendere
     boolean dragging;
     float zoomOffset;
     static final float autoSpin = 0.08f;
-    /** Drag sensitivity: weaker on phones (touch deltas are big in pixels) — Чутливість перетягування: на телефоні слабша (дельти дотику великі в пікселях). */
-    static final float dragSensDesktop = 0.25f, dragSensMobile = 0.00125f;
+    /**
+     * Drag sensitivity, degrees per density-independent pixel: the same feel with a mouse and on any phone.
+     * — Чутливість перетягування, градусів на незалежний від щільності піксель: однакове відчуття і мишкою, і на будь-якому телефоні.
+     */
+    static final float dragSens = 0.25f;
+    /** Pointer position on the previous frame, for our own drag deltas (see updateInput) — Позиція вказівника в попередньому кадрі, для власних дельт (див. updateInput). */
+    float lastTouchX, lastTouchY;
 
     // 3D cage: the same hex/pentagon grid as sectors (Goldberg polyhedron) — 3D-клітка: та сама сітка, що й сектори (Goldberg-поліедр)
     static final int cageSize = 1;          // 0 dodecahedron, 1 football (12 pent + 20 hex), 2 denser — 0 додекаедр, 1 м'яч (12 п'ятикутників + 20 шестикутників), 2 густіше
@@ -404,13 +409,26 @@ public class AuroraMenuRenderer implements PlanetRenderer.PlanetInterfaceRendere
 
     /** Drag rotates, release keeps spinning with inertia, wheel zooms — Тягнеш — крутиш, відпустив — докручує з інерцією, колесо — зум. */
     void updateInput(){
-        if(Core.input.justTouched()) dragging = !overUi();
+        // Own deltas from the pointer position, not input.deltaX/Y: on Android Arc's deltaY subtracts a flipped y from a raw
+        // one, so it is a screen-sized number instead of a per-frame move (vertical went wild, so the sensitivity was cut and
+        // horizontal barely moved). mouseX/Y are consistent on every platform.
+        // — Власні дельти з позиції вказівника, а не input.deltaX/Y: на Android deltaY в Arc віднімає перевернутий y від
+        // сирого, тож це число розміром з екран, а не зсув за кадр (вертикаль шаленіла, чутливість урізали, і горизонталь
+        // ледь рухалась). mouseX/Y узгоджені на всіх платформах.
+        float mx = Core.input.mouseX(), my = Core.input.mouseY();
+        if(Core.input.justTouched()){
+            dragging = !overUi();
+            lastTouchX = mx;
+            lastTouchY = my;
+        }
         if(!Core.input.isTouched()) dragging = false;
 
         if(dragging){
-            float dragSens = mobile ? dragSensMobile : dragSensDesktop;
-            velYaw = -Core.input.deltaX() * dragSens;
-            velPitch = -Core.input.deltaY() * dragSens;
+            float sens = dragSens / Math.max(Scl.scl(1f), 0.01f);
+            velYaw = -(mx - lastTouchX) * sens;
+            velPitch = -(my - lastTouchY) * sens;
+            lastTouchX = mx;
+            lastTouchY = my;
             yaw += velYaw;
             pitch += velPitch;
         }else{
