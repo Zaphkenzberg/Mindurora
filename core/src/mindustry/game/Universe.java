@@ -117,20 +117,20 @@ public class Universe{
     public void clearLoadoutInfo(){
         lastLoadout = null;
         lastLaunchResources = new ItemSeq();
-        Core.settings.remove("launch-resources-seq");
+        Core.settings.remove(key("launch-resources-seq"));
         Core.settings.remove("lastloadout-core-shard");
         Core.settings.remove("lastloadout-core-nucleus");
         Core.settings.remove("lastloadout-core-foundation");
     }
 
     public ItemSeq getLaunchResources(){
-        lastLaunchResources = Core.settings.getJson("launch-resources-seq", ItemSeq.class, ItemSeq::new);
+        lastLaunchResources = Core.settings.getJson(key("launch-resources-seq"), ItemSeq.class, ItemSeq::new);
         return lastLaunchResources;
     }
 
     public void updateLaunchResources(ItemSeq stacks){
         this.lastLaunchResources = stacks;
-        Core.settings.putJson("launch-resources-seq", lastLaunchResources);
+        Core.settings.putJson(key("launch-resources-seq"), lastLaunchResources);
     }
 
     /** Updates selected loadout for future deployment. Creates an empty schematic with a single core block. */

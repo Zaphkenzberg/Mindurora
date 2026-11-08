@@ -260,7 +260,7 @@ public class Vars implements Loadable{
 
     /** Settings key prefix of the current slot — Префікс ключів налаштувань поточного слоту. */
     public static String campaignPrefix(){
-        return campaignSlot == slotNormal ? "" : campaignSlot == slotGuest ? "cg-" : "c2-";
+        return mindustry.game.CampaignSlots.prefix(campaignSlot);
     }
 
     /** Save folder of a slot — Папка сейвів слоту. */

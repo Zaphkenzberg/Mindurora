@@ -303,30 +303,9 @@ public class MenuFragment{
         };
     }
 
-    /** AURORA: switch campaign slot: save folder, keys, unlocks, research progress — Перемкнути слот кампанії: папка сейвів, ключі, дослідження, прогрес. */
+    /** AURORA: switch campaign slot, see CampaignSlots — Перемкнути слот кампанії, див. CampaignSlots. */
     public void switchCampaign(int slot) {
-        // Same slot: everything is already loaded (guest is the exception, it is wiped before each join) — Той самий слот: усе вже завантажено (виняток — гість, його стирають перед кожним входом)
-        if(slot == campaignSlot && slot != slotGuest && saveDirectory != null && saveDirectory.equals(dataDirectory.child(campaignSaveDir(slot)))) return;
-        campaignSlot = slot;
-        saveDirectory = dataDirectory.child(campaignSaveDir(slot));
-        universe.reloadForSlot();
-
-        for (Planet p : content.planets()) {
-            for (Sector s : p.sectors) s.save = null;
-        }
-
-        control.saves.load();
-
-        for (Planet p : content.planets()) {
-            for (Sector s : p.sectors) s.loadInfo();
-            p.loadRules(); // own difficulty per slot — своя складність для кожного слоту
-        }
-        content.each(c -> {
-            if (c instanceof UnlockableContent u) u.reloadUnlock();
-        });
-        if(slot != 0) AuroraResearch.syncUnlocks();
-        for(var node : mindustry.content.TechTree.all) node.reloadProgress();
-        AuroraNet.onCampaignSlot(slot);
+        mindustry.game.CampaignSlots.switchTo(slot);
     }
     private void fadeInMenu(){
         submenu.clearActions();

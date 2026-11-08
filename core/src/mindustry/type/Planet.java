@@ -269,11 +269,11 @@ public class Planet extends UnlockableContent{
         if(sectors.isEmpty()){
             return null;
         }
-        return sectors.get(Math.min(Core.settings.getInt(name + "-last-sector", startSector), sectors.size - 1));
+        return sectors.get(Math.min(Core.settings.getInt(mindustry.game.CampaignSlots.key(name + "-last-sector"), startSector), sectors.size - 1));
     }
 
     public void setLastSector(Sector sector){
-        Core.settings.put(name + "-last-sector", sector.id);
+        Core.settings.put(mindustry.game.CampaignSlots.key(name + "-last-sector"), sector.id);
     }
 
     public void preset(int index, SectorPreset preset){

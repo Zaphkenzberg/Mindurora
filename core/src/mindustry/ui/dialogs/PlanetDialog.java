@@ -82,7 +82,7 @@ public class PlanetDialog extends BaseDialog implements PlanetInterfaceRenderer{
         state.drawUi = true;
 
         shouldPause = true;
-        state.planet = content.getByName(ContentType.planet, Core.settings.getString("lastplanet", "serpulo"));
+        state.planet = content.getByName(ContentType.planet, Core.settings.getString(mindustry.game.CampaignSlots.key("lastplanet"), "serpulo"));
         if(state.planet == null) state.planet = Planets.serpulo;
 
         clampZoom();
@@ -245,7 +245,7 @@ public class PlanetDialog extends BaseDialog implements PlanetInterfaceRenderer{
         //view current planet by default
         if(Vars.state.rules.sector != null){
             state.planet = Vars.state.rules.sector.planet;
-            settings.put("lastplanet", state.planet.name);
+            settings.put(mindustry.game.CampaignSlots.key("lastplanet"), state.planet.name);
         }
 
         if(!selectable(state.planet)){
@@ -904,7 +904,7 @@ public class PlanetDialog extends BaseDialog implements PlanetInterfaceRenderer{
             selected = null;
             updateSelected();
             rebuildExpand();
-            settings.put("lastplanet", planet.name);
+            settings.put(mindustry.game.CampaignSlots.key("lastplanet"), planet.name);
         }
     }
 
