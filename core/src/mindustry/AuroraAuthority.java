@@ -168,6 +168,47 @@ public class AuroraAuthority {
         }
     }
 
+    /**
+     * Who holds a sector after a claim. A free (or dead) sector goes to the claimer; a live one stays with its host,
+     * unless the claim is that same host coming back with its key (then it keeps the key).
+     * — Хто тримає сектор після клейму. Вільний (або мертвий) сектор дістається тому, хто клеймить; живий лишається
+     * за своїм хостом, хіба що це той самий хост повертається зі своїм ключем (тоді ключ зберігається).
+     */
+    static Host pickHost(Host old, Host mine, String who, String theirKey, long now) {
+        if (old == null || !old.alive(now)) return mine;
+        if (old.player.equals(who) && !old.key.isEmpty() && old.key.equals(theirKey)) return mine.keyed(old.key);
+        return old;
+    }
+
+    /**
+     * Split a payment across sectors in proportion to their stock. avail: item -> sector -> amount (> 0), and every
+     * item's total is already known to cover need. Returns item -> sector -> amount to take; per item the amounts add
+     * up to need, and no sector gives more than it has.
+     * — Розкласти оплату по секторах пропорційно їхньому запасу. avail: предмет -> сектор -> кількість (> 0), і сума по
+     * кожному предмету вже точно покриває need. Повертає предмет -> сектор -> скільки зняти; по кожному предмету сума
+     * дорівнює need, і жоден сектор не віддає більше, ніж має.
+     */
+    static Map<String, Map<String, Integer>> splitSpend(Map<String, Integer> need, Map<String, Map<String, Integer>> avail) {
+        Map<String, Map<String, Integer>> out = new LinkedHashMap<>();
+        for (Map.Entry<String, Integer> e : need.entrySet()) {
+            Map<String, Integer> per = avail.get(e.getKey());
+            Map<String, Integer> takes = new LinkedHashMap<>();
+            out.put(e.getKey(), takes);
+            if (per == null) continue;
+            long total = 0;
+            for (int a : per.values()) total += a;
+            int left = e.getValue();
+            for (Map.Entry<String, Integer> s : per.entrySet()) {
+                if (left == 0) break;
+                int take = (int) Math.min((long) Math.ceil((double) e.getValue() * s.getValue() / total), Math.min(left, s.getValue()));
+                if (take <= 0) continue;
+                takes.put(s.getKey(), take);
+                left -= take;
+            }
+        }
+        return out;
+    }
+
     static Server server;
     static int boundPort = -1;
     /** Request handlers run here, never on ArcNet's update thread — Обробники запитів працюють тут, ніколи не в потоці оновлення ArcNet. */
@@ -1187,11 +1228,7 @@ public class AuroraAuthority {
             // Same uuid without the key (a copied uuid, or our own game restarted) waits until the old entry expires.
             // — Живий хост лишається, якщо клейм не несе його ключ (та сама гра клеймить знову); мертвий замінюємо.
             // Той самий uuid без ключа (скопійований uuid або наша ж перезапущена гра) чекає, поки старий запис застаріє.
-            Host cur = hosts.compute(id, (k, old) -> {
-                if (old == null || !old.alive(now)) return mine;
-                if (old.player.equals(who) && !old.key.isEmpty() && old.key.equals(theirKey)) return mine.keyed(old.key);
-                return old;
-            });
+            Host cur = hosts.compute(id, (k, old) -> pickHost(old, mine, who, theirKey, now));
             boolean sameButLocked = cur != mine && cur.player.equals(who);
             Log.info("Authority claim @ by @ from @ -> @ | prev=@", id, shortId(mine.player), mine.ip, cur == mine ? "HOST" : "client",
                 prev == null ? "none" : shortId(prev.player) + " age=" + (now - prev.lastSeen) + "ms ready=" + prev.ready);
@@ -1595,18 +1632,10 @@ public class AuroraAuthority {
         }
 
         // Split proportionally to each sector's stock, like vanilla — Розкладаємо пропорційно запасу секторів, як у ванілі
-        for (Map.Entry<String, Integer> e : need.entrySet()) {
+        for (Map.Entry<String, Map<String, Integer>> e : splitSpend(need, avail).entrySet()) {
             String item = e.getKey();
-            Map<String, Integer> per = avail.get(item);
-            int total = 0;
-            for (int a : per.values()) total += a;
-            int left = e.getValue();
-            for (Map.Entry<String, Integer> s : per.entrySet()) {
-                if (left == 0) break;
-                int take = Math.min((int) Math.ceil((double) e.getValue() * s.getValue() / total), Math.min(left, s.getValue()));
-                if (take <= 0) continue;
-                pending.computeIfAbsent(s.getKey(), k -> new CopyOnWriteArrayList<>()).add(new Op(opId + ":" + item, item, take));
-                left -= take;
+            for (Map.Entry<String, Integer> s : e.getValue().entrySet()) {
+                pending.computeIfAbsent(s.getKey(), k -> new CopyOnWriteArrayList<>()).add(new Op(opId + ":" + item, item, s.getValue()));
             }
         }
         saveEconomy();
