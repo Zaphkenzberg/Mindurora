@@ -68,6 +68,28 @@ public class AuroraResearch {
     }
 
     /** Pull shared unlocks from Authority and push ours it does not have yet — Тягне спільні дослідження з Authority і заливає наші, яких там ще нема. */
+    /**
+     * The first sync after entering a planet brings its whole history: sector presets opened in it are marked as already
+     * shown, so the map does not fly the camera over every one of them. Reset on every slot change.
+     * — Перша синхронізація після входу на планету приносить усю її історію: відкриті в ній сектори позначаються як уже
+     * показані, щоб карта не возила камеру по кожному з них. Скидається при кожній зміні слоту.
+     */
+    static boolean historySynced;
+
+    static void resetHistory() {
+        historySynced = false;
+    }
+
+    /** Mark the sectors of these presets as already shown on the map — Позначити сектори цих пресетів як уже показані на карті. */
+    static void markPresetsShown(Seq<UnlockableContent> list) {
+        for (UnlockableContent u : list) {
+            if (u instanceof mindustry.type.SectorPreset p && p.sector != null && !p.sector.info.shown) {
+                p.sector.info.shown = true;
+                p.sector.saveInfo();
+            }
+        }
+    }
+
     public static void syncUnlocks() {
         mainExecutor.submit(() -> {
             try {
@@ -80,6 +102,8 @@ public class AuroraResearch {
 
                 Core.app.post(() -> {
                     if (!auroraSlot()) return;
+                    boolean history = !historySynced;
+                    historySynced = true;
                     Seq<String> missing = new Seq<>();
                     Seq<UnlockableContent> fresh = new Seq<>();
                     content.each(c -> {
@@ -91,6 +115,8 @@ public class AuroraResearch {
                         }
                     });
                     applyRemoteUnlocks(fresh, remote);
+                    // Sectors opened before we came are history, not news — Сектори, відкриті до нашого приходу, — історія, а не новина
+                    if (history) markPresetsShown(fresh);
                     if (missing.isEmpty()) return;
                     String by = myName();
                     mainExecutor.submit(() -> {

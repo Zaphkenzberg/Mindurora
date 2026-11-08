@@ -1175,6 +1175,7 @@ public class AuroraNet {
         liveSectors = new ObjectSet<>();
         remoteState = new ObjectIntMap<>();
         AuroraItems.reset();
+        AuroraResearch.resetHistory();
         ownerHash = "";
         ownerIps = new ObjectSet<>();
         banUuids = new ObjectSet<>();

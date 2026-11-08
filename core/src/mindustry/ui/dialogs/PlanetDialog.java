@@ -270,6 +270,8 @@ public class PlanetDialog extends BaseDialog implements PlanetInterfaceRenderer{
 
         //announce new presets
         for(SectorPreset preset : content.sectors()){
+            //AURORA: a sector where a friend already has a base is not news — сектор, де вже є база друга, не новина
+            if(auroraSlot() && mindustry.AuroraNet.remoteBase(preset.sector)) continue;
             if(preset.unlocked() && preset.sector.preset == preset && !preset.alwaysUnlocked && !preset.sector.info.shown && preset.requireUnlock && !preset.sector.hasBase() && preset.planet == state.planet){
                 newPresets.add(preset.sector);
                 preset.sector.info.shown = true;
