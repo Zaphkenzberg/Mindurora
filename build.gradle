@@ -223,7 +223,8 @@ configure(project(":annotations")){
 }
 
 //compile with java 8 compatibility for everything except the annotation project
-configure(subprojects - project(":annotations")){
+//AURORA: and except tests, they only run on the PC (see project(":tests"))
+configure(subprojects - project(":annotations") - project(":tests")){
     tasks.withType(JavaCompile){
         options.compilerArgs.addAll(['--release', '8'])
     }
@@ -390,6 +391,13 @@ project(":server"){
 
 project(":tests"){
     apply plugin: "java"
+
+    //AURORA: tests never ship (not in the APK or the jar) and run on the PC's JDK 17, so they may use Java 17
+    //— тести не потрапляють у гру (ні в APK, ні в jar) і запускаються на JDK 17 ПК, тож можуть використовувати Java 17
+    tasks.withType(JavaCompile){
+        sourceCompatibility = 17
+        targetCompatibility = 17
+    }
 
     dependencies{
         testImplementation project(":core")
