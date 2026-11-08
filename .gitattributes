@@ -1,0 +1,2 @@
+# Line endings: Java sources are stored with LF, like upstream Mindustry
+*.java text eol=lf
