@@ -24,7 +24,7 @@ public class Version{
     public static int revision = 0;
     /** Whether version loading is enabled. */
     public static boolean enabled = true;
-    public static String aurora = "1.2.2";
+    public static String aurora = "1.3";
 
     public static void init(){
         if(!enabled) return;
