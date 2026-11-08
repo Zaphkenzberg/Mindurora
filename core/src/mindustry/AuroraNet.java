@@ -543,6 +543,18 @@ public class AuroraNet {
         return t;
     });
 
+    /**
+     * Heartbeat has its own thread: on the shared mainExecutor it could wait behind other network work, and a late beat makes
+     * friends see the sector host as gone.
+     * — Heartbeat має свій потік: у спільному mainExecutor він міг чекати за іншою мережевою роботою, а запізнілий beat
+     * змушує друзів бачити хоста сектора зниклим.
+     */
+    static final java.util.concurrent.ExecutorService beatExecutor = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "aurora-beat");
+        t.setDaemon(true);
+        return t;
+    });
+
     /** Queue an upload of a snapshot; on failure the next beat retries — Поставити в чергу заливання знімка; при помилці наступний beat спробує ще раз. */
     static void upload(Sector s, byte[][] pack, String why) {
         uploads.submit(() -> {
@@ -839,7 +851,7 @@ public class AuroraNet {
             if (pack != null) lastPush = Time.millis();
             boolean reclaim = beatFails > 0;
             byte[] hbBody = heartbeatBody();
-            mainExecutor.submit(() -> {
+            beatExecutor.submit(() -> {
                 boolean ok = false;
                 try {
                     if (reclaim) {

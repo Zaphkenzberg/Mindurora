@@ -153,6 +153,26 @@ public class AuroraItems {
      * без цього набору кожна синхронізація знімала б його ще раз і спустошувала ядро.
      */
     static final ObjectSet<String> appliedOps = new ObjectSet<>();
+    /**
+     * appliedOps in the order they were added; past APPLIED_KEEP the oldest are forgotten one by one. Clearing the whole set
+     * (as before) could forget an op that was taken from the core but not yet acked, and take it a second time.
+     * — appliedOps у порядку додавання; понад APPLIED_KEEP найстаріші забуваються по одному. Очищення всього набору
+     * (як раніше) могло забути списання, вже зняте з ядра, але ще не підтверджене, і зняти його вдруге.
+     */
+    static final Queue<String> appliedOrder = new Queue<>();
+    static final int APPLIED_KEEP = 2000;
+
+    /**
+     * Plain stock pushes (no new spends, nothing to ack) go through their own thread, so they never wait behind a save of
+     * several MB in the upload queue. Pushes that ack spends stay in the upload queue, in order with the saves.
+     * — Звичайні пуші складу (без нових списань і без підтверджень) мають свій потік, тож ніколи не чекають за сейвом
+     * на кілька МБ у черзі заливання. Пуші з підтвердженням списань лишаються в черзі заливання, по порядку із сейвами.
+     */
+    static final java.util.concurrent.ExecutorService stockUploads = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "aurora-stock");
+        t.setDaemon(true);
+        return t;
+    });
 
     static void syncStock(Sector s) {
         if (stockBusy) return;
@@ -171,13 +191,18 @@ public class AuroraItems {
                         StringBuilder acked = new StringBuilder();
                         boolean appliedNew = false;
                         if (arr != null) {
-                            if (appliedOps.size > 2000) appliedOps.clear();
                             for (JsonValue c = arr.child; c != null; c = c.next) {
                                 String opId = c.getString("id");
                                 Item it = content.item(c.getString("item"));
                                 // Take each op only once, but always ack it again — Кожне списання знімаємо лише раз, але підтверджуємо щоразу
                                 // Op ids repeat across sectors (one spend split over several), so key by sector too — id списань повторюються між секторами (одна витрата на кілька), тож ключ ще й за сектором
-                                if (appliedOps.add(sid(s) + "/" + opId) && it != null && core != null) {
+                                String key = sid(s) + "/" + opId;
+                                boolean first = appliedOps.add(key);
+                                if (first) {
+                                    appliedOrder.addLast(key);
+                                    while (appliedOrder.size > APPLIED_KEEP) appliedOps.remove(appliedOrder.removeFirst());
+                                }
+                                if (first && it != null && core != null) {
                                     core.items.remove(it, Math.min(c.getInt("amount"), core.items.get(it)));
                                     appliedNew = true;
                                 }
@@ -191,7 +216,9 @@ public class AuroraItems {
                         byte[][] pack = appliedNew ? snapshot(s) : null;
                         if (pack != null) lastPush = Time.millis();
                         boolean needSave = appliedNew;
-                        uploads.submit(() -> {
+                        // Acks and saves keep their order in the upload queue; a plain stock push takes the fast lane
+                        // — Підтвердження й сейви тримають порядок у черзі заливання; звичайний пуш складу йде швидкою смугою
+                        (needSave || acked.length() > 0 ? uploads : stockUploads).submit(() -> {
                             // Order: stock -> then the ack. With new spends the ack rides on the save that already has them
                             // (one request), so a crash can neither refund them nor charge them twice. Any failure: no ack,
                             // the next sync repeats it (appliedOps keeps the core from being charged twice).
