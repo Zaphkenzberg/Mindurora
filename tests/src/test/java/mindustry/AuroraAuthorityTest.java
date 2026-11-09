@@ -5,7 +5,8 @@ import org.junit.jupiter.api.*;
 import java.net.*;
 import java.util.*;
 
-import static mindustry.AuroraAuthority.*;
+import static mindustry.AuthorityClaims.*;
+import static mindustry.AuthorityEconomy.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
