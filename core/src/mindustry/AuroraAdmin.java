@@ -54,12 +54,12 @@ final class AuroraAdmin {
         if (p == null) return false;
         if (p.isLocal()) return planetHost();
         if (p.con == null || ownerHash.isEmpty()) return false;
-        return ownerHash.equals(AuroraAuthority.sha256(p.con.uuid)) && ownerIps.contains(plainIp(p.con.address));
+        return ownerHash.equals(AuroraAuthority.sha256(AuroraUtil.planetUuid(p.con.uuid))) && ownerIps.contains(plainIp(p.con.address));
     }
 
     static boolean planetBanned(Player p) {
         if (p == null || p.con == null) return false;
-        return banUuids.contains(p.con.uuid) || banIps.contains(plainIp(p.con.address));
+        return banUuids.contains(AuroraUtil.planetUuid(p.con.uuid)) || banIps.contains(plainIp(p.con.address));
     }
 
     /** Sector host: who is the planet host, who is banned; give admin / kick accordingly — Хост сектора: хто хост планети, хто заблокований; дати адмінку / кікнути. */

@@ -39,7 +39,7 @@ final class AuthorityBans {
         for (String line : f.readString().split("\n")) {
             String[] c = line.split("\t", -1);
             if (c.length < 3 || c[0].isEmpty()) continue;
-            bans.put(c[0], new String[]{c[1], c[2]});
+            bans.put(AuroraUtil.planetUuid(c[0]), new String[]{c[1], c[2]}); // older files may hold sector con.uuids — старі файли можуть містити con.uuid сектора
             if (!c[1].isEmpty()) bannedIps.add(c[1]);
         }
     }
@@ -65,6 +65,7 @@ final class AuthorityBans {
 
     /** Banned or kicked less than a minute ago — Заблокований або видалений менше хвилини тому. */
     static boolean removed(String uuid) {
+        uuid = AuroraUtil.planetUuid(uuid);
         if (uuid == null || uuid.isEmpty() || uuid.equals(ownerUuid)) return false;
         if (bans.containsKey(uuid)) return true;
         Long t = kickedUntil.get(uuid);
@@ -73,6 +74,7 @@ final class AuthorityBans {
 
     /** {"banned":true} or {"kicked":seconds left} — {"banned":true} або {"kicked":скільки секунд лишилось}. */
     static String removedJson(String uuid) {
+        uuid = AuroraUtil.planetUuid(uuid);
         if (bans.containsKey(uuid)) return AuroraJson.obj().put("banned", true).toString();
         Long t = kickedUntil.get(uuid);
         long left = t == null ? 0 : Math.max(1, (t - System.currentTimeMillis() + 999) / 1000);

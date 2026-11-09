@@ -517,7 +517,7 @@ public class AuroraNet {
     /** Planet-wide ban from our own sector: we are the planet host (mayRemove checked it) — Блок на всю планету з нашого сектора: ми власник планети (перевірив mayRemove). */
     public static void planetBan(Player other) {
         if (other == null || other.con == null || !planetHost()) return;
-        String uuid = other.con.uuid, ip = plainIp(other.con.address);
+        String uuid = AuroraUtil.planetUuid(other.con.uuid), ip = plainIp(other.con.address);
         banUuids.add(uuid);
         if (!ip.isEmpty()) banIps.add(ip);
         AuroraAuthority.ban(uuid, ip, Strings.stripColors(other.name), "planet host");

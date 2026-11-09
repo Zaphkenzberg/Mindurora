@@ -392,6 +392,7 @@ public class AuroraAuthority {
 
     /** Bans a player on the whole planet: uuid + IP — Блокує гравця на всій планеті: uuid + IP. */
     public static void ban(String uuid, String ip, String name, String why) {
+        uuid = AuroraUtil.planetUuid(uuid); // a sector's con.uuid or the bare one — con.uuid сектора або голий
         if (uuid == null || uuid.isEmpty() || uuid.equals(ownerUuid)) return;
         if (ip == null) ip = "";
         // Never this PC's own addresses: that would lock the planet host out of his own planet (the uuid is still banned)
@@ -405,6 +406,7 @@ public class AuroraAuthority {
     }
 
     public static void unban(String uuid) {
+        uuid = AuroraUtil.planetUuid(uuid);
         String[] v = bans.remove(uuid);
         if (v == null) return;
         bannedIps.clear();
@@ -417,6 +419,7 @@ public class AuroraAuthority {
 
     /** Kick from the planet: out of his sector (hosts too), no re-entry for a minute — Видалити з планети: геть із сектора (хостів теж), без повернення хвилину. */
     public static void kick(String uuid) {
+        uuid = AuroraUtil.planetUuid(uuid);
         if (uuid == null || uuid.isEmpty() || uuid.equals(ownerUuid)) return;
         kickedUntil.put(uuid, System.currentTimeMillis() + KICK_MS);
         dropHost(uuid, null);
@@ -479,7 +482,7 @@ public class AuroraAuthority {
     }
 
     public static boolean isOwner(String uuid) {
-        return uuid != null && uuid.equals(ownerUuid);
+        return uuid != null && AuroraUtil.planetUuid(uuid).equals(ownerUuid);
     }
 
     /** For the host dialog: uuid -> {ip, name} — Для вікна хоста: uuid -> {ip, ім'я}. */

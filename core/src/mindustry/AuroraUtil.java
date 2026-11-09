@@ -30,6 +30,31 @@ public final class AuroraUtil {
         return sb.append('"').toString();
     }
 
+    /**
+     * Aurora's id of a player. A sector server knows a joined player by con.uuid, which is his uuid followed by its CRC32
+     * (16 bytes, see Packets.ConnectPacket), while Aurora (claims, bans, kicks) knows him by the bare uuid
+     * (platform.getUUID(), 8 bytes). Mixing the two let a kicked player host another sector at once, and a player banned
+     * from inside a sector still claim. Anything that is not uuid + matching CRC is returned unchanged.
+     * — Id гравця в Aurora. Сервер сектора знає гравця за con.uuid — це його uuid і за ним CRC32 (16 байтів, див.
+     * Packets.ConnectPacket), а Aurora (клейми, бани, кіки) знає його за голим uuid (platform.getUUID(), 8 байтів).
+     * Через змішування кікнутий гравець одразу хостив інший сектор, а забанений із сектора все одно клеймив.
+     * Усе, що не є uuid + відповідний CRC, повертається без змін.
+     */
+    public static String planetUuid(String uuid) {
+        if (uuid == null) return "";
+        try {
+            byte[] b = arc.util.serialization.Base64Coder.decode(uuid);
+            if (b.length == 16) {
+                java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+                crc.update(b, 0, 8);
+                long tail = java.nio.ByteBuffer.wrap(b, 8, 8).getLong();
+                if (tail == crc.getValue()) return new String(arc.util.serialization.Base64Coder.encode(java.util.Arrays.copyOf(b, 8)));
+            }
+        } catch (Exception ignored) {
+        }
+        return uuid;
+    }
+
     /** URL-encode a query value — Закодувати значення для URL. */
     public static String urlEnc(String s) {
         // The String overload: the Charset one needs Android API 33 — Перевантаження з String: з Charset потребує Android API 33

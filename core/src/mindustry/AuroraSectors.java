@@ -490,7 +490,7 @@ final class AuroraSectors {
         AuroraJson a = AuroraJson.arr();
         Groups.player.each(p -> {
             if (!p.isLocal() && p.con == null) return;
-            String uuid = p.isLocal() ? me() : p.con.uuid, ip = p.isLocal() ? "" : plainIp(p.con.address);
+            String uuid = p.isLocal() ? me() : AuroraUtil.planetUuid(p.con.uuid), ip = p.isLocal() ? "" : plainIp(p.con.address);
             a.add(AuroraJson.obj().put("uuid", uuid).put("ip", ip).put("name", Strings.stripColors(p.name)).put("pid", p.id));
         });
         return a.toString().getBytes(StandardCharsets.UTF_8);
@@ -508,7 +508,7 @@ final class AuroraSectors {
         }
         if (out.isEmpty()) return;
         Core.app.post(() -> Groups.player.each(p -> {
-            if (!p.isLocal() && p.con != null && out.contains(p.con.uuid)) {
+            if (!p.isLocal() && p.con != null && out.contains(AuroraUtil.planetUuid(p.con.uuid))) {
                 Log.info("Aurora: removing @ (planet host's decision)", p.plainName());
                 p.kick(mindustry.net.Packets.KickReason.kick);
             }

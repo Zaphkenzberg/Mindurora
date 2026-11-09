@@ -324,7 +324,7 @@ final class AuthorityRoutes {
                 try {
                     List<String[]> list = new ArrayList<>();
                     for (JsonValue c = new JsonReader().parse(new String(hb, StandardCharsets.UTF_8)).child; c != null && list.size() < 64; c = c.next) {
-                        list.add(new String[]{c.getString("uuid", ""), c.getString("ip", ""), cut(c.getString("name", "")), String.valueOf(c.getInt("pid", -1))});
+                        list.add(new String[]{AuroraUtil.planetUuid(c.getString("uuid", "")), c.getString("ip", ""), cut(c.getString("name", "")), String.valueOf(c.getInt("pid", -1))});
                     }
                     sectorPlayers.put(id, list);
                 } catch (Throwable ignored) {
