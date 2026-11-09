@@ -26,7 +26,7 @@ public class Version{
     public static boolean isSteam = false;
     /** Whether version loading is enabled. */
     public static boolean enabled = true;
-    public static String aurora = "1.3.1";
+    public static String aurora = "1.5";
 
     public static void init(){
         if(!enabled) return;
