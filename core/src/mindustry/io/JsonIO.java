@@ -151,6 +151,16 @@ public class JsonIO{
     }
 
     static{
+        apply(json);
+    }
+
+    /**
+     * AURORA: the serializers, set on any Json. In v160 Anuke sets them straight on {@link #json} in a static block;
+     * as a method they also go to {@link #safeJson}, exactly as in v152.
+     * — AURORA: серіалізатори для будь-якого Json. У v160 Anuke ставить їх прямо на {@link #json} у статичному блоці;
+     * як метод вони йдуть і в {@link #safeJson}, рівно як у v152.
+     */
+    static void apply(Json json){
         json.setElementType(Rules.class, "spawns", SpawnGroup.class);
         json.setElementType(Rules.class, "loadout", ItemStack.class);
 
