@@ -37,15 +37,22 @@ public class AuroraHostDialog extends BaseDialog{
             separator(t);
 
             // Address for friends — Адреса для друзів
-            String addr = AuroraNet.myIp() + ":" + AuroraNet.myPort();
-            t.add(mindustry.AuroraUtil.tr("host.address"));
+            // AURORA: every address, LAN first, then Tailscale: a friend at home needs the LAN one, a friend over the internet the
+            // Tailscale one — кожна адреса, спершу LAN, потім Tailscale: другові вдома потрібна LAN, другові через інтернет Tailscale
+            t.add(mindustry.AuroraUtil.tr("host.address")).top();
             t.table(r -> {
-                r.add("[accent]" + addr).padRight(8f);
-                r.button(Icon.copySmall, Styles.clearNonei, () -> {
-                    Core.app.setClipboardText(addr);
-                    Vars.ui.showInfoFade("@copied");
-                }).size(40f);
-            }).row();
+                java.util.List<String> ips = AuroraNet.myIps();
+                if (ips.isEmpty()) ips = java.util.Collections.singletonList(AuroraNet.myIp());
+                for (String ip : ips) {
+                    String addr = ip + ":" + AuroraNet.myPort();
+                    r.add("[accent]" + addr).left().padRight(8f);
+                    r.add(AuroraNet.isTailscaleIp(ip) ? "[lightgray]Tailscale" : "[lightgray]LAN").padRight(8f);
+                    r.button(Icon.copySmall, Styles.clearNonei, () -> {
+                        Core.app.setClipboardText(addr);
+                        Vars.ui.showInfoFade("@copied");
+                    }).size(40f).row();
+                }
+            }).left().row();
             t.add(mindustry.AuroraUtil.tr("host.address.hint")).colspan(2).row();
             t.add(mindustry.AuroraUtil.tr("host.port"));
             t.label(() -> AuroraAuthority.port() > 0 ? String.valueOf(AuroraAuthority.port()) : "-").row();

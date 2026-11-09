@@ -147,6 +147,25 @@ public class AuroraNet {
     /** All our LAN / Tailscale IPv4 addresses, so Authority can give each joining player the one on his network — Усі наші LAN / Tailscale IPv4, щоб Authority дав кожному гравцю адресу в його мережі. */
     static String myIpsJson() {
         AuroraJson out = AuroraJson.arr();
+        for (String ip : myIps()) out.add(ip);
+        return out.toString();
+    }
+
+    /** Tailscale address (100.64.0.0/10) — Адреса Tailscale (100.64.0.0/10). */
+    public static boolean isTailscaleIp(String ip) {
+        String[] p = ip.split("\\.");
+        if (p.length != 4 || !p[0].equals("100")) return false;
+        int second = Strings.parseInt(p[1], -1);
+        return second >= 64 && second <= 127;
+    }
+
+    /**
+     * Our addresses friends can use: the set one (Aurora settings) first, then LAN ones, then Tailscale ones. The host dialog
+     * shows them all: on a phone with Tailscale on, showing only one gave the Tailscale address to a friend at home.
+     * — Наші адреси, якими можуть скористатися друзі: спершу задана (налаштування Aurora), потім LAN, потім Tailscale.
+     * Вікно хоста показує їх усі: на телефоні з увімкненим Tailscale одна адреса давала другові вдома адресу Tailscale.
+     */
+    public static java.util.List<String> myIps() {
         java.util.LinkedHashSet<String> all = new java.util.LinkedHashSet<>();
         String s = Core.settings.getString("aurora-ip", "");
         if (!s.isEmpty() && !s.equals("127.0.0.1")) all.add(s);
@@ -159,8 +178,13 @@ public class AuroraNet {
             }
         } catch (Exception ignored) {
         }
-        for (String ip : all) out.add(ip);
-        return out.toString();
+        java.util.List<String> lan = new java.util.ArrayList<>(), ts = new java.util.ArrayList<>();
+        for (String ip : all) {
+            if (ip.startsWith("192.168.56.")) continue; // VirtualBox host-only, nobody else can reach it — VirtualBox, до нього ніхто не достукається
+            (isTailscaleIp(ip) ? ts : lan).add(ip);
+        }
+        lan.addAll(ts);
+        return lan;
     }
 
     public static int myPort() {
