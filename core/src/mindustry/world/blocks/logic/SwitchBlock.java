@@ -21,6 +21,7 @@ public class SwitchBlock extends Block{
         update = true;
         drawDisabled = false;
         autoResetEnabled = false;
+        configureSound = Sounds.none;
         group = BlockGroup.logic;
         envEnabled = Env.any;
         // AURORA: ulocate filter "logic" — фільтр ulocate "логіка"

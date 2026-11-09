@@ -46,8 +46,9 @@ public class RegenProjector extends Block{
         suppressable = true;
         envEnabled |= Env.space;
         rotateDraw = false;
-        // AURORA: ulocate filter "brepair" — фільтр ulocate "ремонт блоків"
-        flags = arc.struct.EnumSet.of(BlockFlag.brepair);
+        flags = EnumSet.of(BlockFlag.blockRepair);
+        ambientSound = Sounds.loopRegen;
+        ambientSoundVolume = 0.45f;
     }
 
     @Override
@@ -138,7 +139,7 @@ public class RegenProjector extends Block{
             anyTargets = targets.contains(b -> b.damaged());
 
             if(efficiency > 0){
-                if((optionalTimer += Time.delta * optionalEfficiency) >= optionalUseTime){
+                if((optionalTimer += edelta() * optionalEfficiency) >= optionalUseTime){
                     consume();
                     optionalTimer = 0f;
                 }

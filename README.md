@@ -28,7 +28,7 @@ The text in the right column is the hint the game shows when you hover over (or 
 | `factory` | Buildings that transform resources. | crafters, **separators** | extended |
 | `ufactory` | Unit factories and reconstructors. | unit factories, reconstructors | **new** |
 | `repair` | Repair points. | repair points / turrets (repair units) | vanilla |
-| `brepair` | Buildings that repair other buildings, e.g. Mender, Regen Projector. | menders, mend projectors, regen projectors | **new** |
+| `blockRepair` | Buildings that repair other buildings, e.g. Mender, Regen Projector. | menders, mend projectors, regen projectors | vanilla flag, now in `ulocate` |
 | `battery` | Any battery. | batteries | vanilla |
 | `reactor` | Impact/Thorium reactor. | reactors | vanilla |
 | `drill` | Drills and pumps. | drills, beam drills, wall crafters, **pumps** | extended |
@@ -44,7 +44,6 @@ Hints are translated into English, Ukrainian, Russian and Polish.
 **Side effects to know about:**
 - Solar panels have the `generator` flag again, so enemy AI treats them like any other generator
   (vanilla removed it so enemies hit solar panels last).
-- The internal flag `blockRepair` is replaced by `brepair`; mods that use `BlockFlag.blockRepair` will not compile against AURORA.
 
 ## How to play together
 1. The planet host opens **Aurora** in the main menu. The Authority starts on port **8443**.
@@ -56,7 +55,7 @@ Hints are translated into English, Ukrainian, Russian and Polish.
 and allow Java through the firewall when Windows asks.
 
 ## Building
-Same as Mindustry (see below). For a numbered build: `gradlew desktop:dist -Pbuildversion=152`.
+Same as Mindustry (see below). For a numbered build: `gradlew desktop:dist -Pbuildversion=160`.
 
 ![Logo](core/assets-raw/sprites/ui/logo.png)
 
@@ -71,7 +70,9 @@ _[Javadoc](https://mindustrygame.github.io/docs/)_
 
 ## Contributing
 
-See [CONTRIBUTING](CONTRIBUTING.md).
+See [CONTRIBUTING](CONTRIBUTING.md) for general code style and PR guidelines.
+
+If you are a first-time contributor looking for features to implement or bugs to fix, see the issues tagged with 'candidate' [in the Mindustry-Suggestions repostiory](https://github.com/Anuken/Mindustry-Suggestions/issues?q=is%3Aissue%20state%3Aopen%20label%3Acandidate).
 
 ## Building
 

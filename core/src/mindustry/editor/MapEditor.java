@@ -56,7 +56,7 @@ public class MapEditor{
             tags.put("steamid",  map.file.parent().name());
         }
         load(() -> MapIO.loadMap(map, context));
-        renderer.resize(width(), height());
+        if(!headless) renderer.resize(width(), height());
         loading = false;
     }
 
@@ -65,7 +65,7 @@ public class MapEditor{
 
         createTiles(pixmap.width, pixmap.height);
         load(() -> MapIO.readImage(pixmap, tiles()));
-        renderer.resize(width(), height());
+        if(!headless) renderer.resize(width(), height());
     }
 
     public void updateRenderer(){
@@ -78,7 +78,11 @@ public class MapEditor{
             if(build != null && tile.isCenter()){
                 builds.add(build);
             }
-            tiles.seti(i, new EditorTile(tile.x, tile.y, tile.floorID(), tile.overlayID(), build == null ? tile.blockID() : 0));
+
+            var newTile = new EditorTile(tile.x, tile.y, tile.floorID(), tile.overlayID(), build == null ? tile.blockID() : 0);
+            newTile.floorData = tile.floorData;
+            newTile.extraData = tile.extraData;
+            tiles.seti(i, newTile);
         }
 
         for(var build : builds){

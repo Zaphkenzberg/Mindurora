@@ -25,6 +25,8 @@ public class OverflowGate extends Block{
         itemCapacity = 0;
         // AURORA: ulocate filter "transfer" — фільтр ulocate "передача"
         flags = arc.struct.EnumSet.of(BlockFlag.transfer);
+        drawCached = true;
+        drawDynamic = false;
     }
 
     @Override

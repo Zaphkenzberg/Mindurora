@@ -7,7 +7,7 @@ import mindustry.type.*;
 public class CampaignRules{
     public Difficulty difficulty = Difficulty.normal;
     public boolean fog;
-    public boolean showSpawns;
+    public boolean hideSpawns;
     public boolean sectorInvasion;
     public boolean randomWaveAI;
     public boolean legacyLaunchPads;
@@ -15,11 +15,13 @@ public class CampaignRules{
     public boolean clearSectorOnLose;
     /** AURORA: 0 = planet light, 1 = always night, 2 = day/night cycle — 0 = світло планети, 1 = завжди ніч, 2 = цикл день/ніч. */
     public int dayNight = 0;
+    public boolean pauseDisabled;
 
     public void apply(Planet planet, Rules rules){
         rules.staticFog = rules.fog = fog;
-        rules.showSpawns = showSpawns;
+        rules.hideSpawns = hideSpawns;
         rules.randomWaveAI = randomWaveAI;
+        rules.pauseDisabled = pauseDisabled;
         rules.objectiveTimerMultiplier = difficulty.waveTimeMultiplier;
         rules.dayNightMode = dayNight; // AURORA
         if(planet.showRtsAIRule){

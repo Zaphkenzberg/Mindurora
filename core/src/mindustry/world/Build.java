@@ -87,6 +87,7 @@ public class Build{
             tile.build.noSleep();
             Fx.rotateBlock.at(tile.build.x, tile.build.y, tile.build.block.size);
             Events.fire(new BuildRotateEvent(tile.build, unit, previous));
+            if(!headless) Sounds.blockRotate.at(tile.build, 1f + Mathf.range(0.1f), 1f);
             return;
         }
 
@@ -102,13 +103,14 @@ public class Build{
             tile.build.checkAllowUpdate();
             tile.build.updateProximity();
             tile.build.onRepaired();
+            world.tileChanges ++; //repair should count as a tile change
 
             if(unit != null && unit.getControllerName() != null) tile.build.lastAccessed = unit.getControllerName();
 
             if(fogControl.isVisibleTile(team, tile.x, tile.y)){
                 result.placeEffect.at(tile.drawx(), tile.drawy(), result.size);
                 Fx.rotateBlock.at(tile.build.x, tile.build.y, tile.build.block.size);
-                //doesn't play a sound
+                ConstructBlock.playRepairSound(team, tile);
             }
 
             Events.fire(new BlockBuildEndEvent(tile, unit, team, false, tile.build.config()));
@@ -184,12 +186,16 @@ public class Build{
             return false;
         }
 
-        if(!state.rules.editor && checkCoreRadius){
+        if(!state.rules.editor && checkCoreRadius && !(!checkVisible && team == Team.derelict)){
             //find closest core, if it doesn't match the team, placing is not legal
             if(state.rules.polygonCoreProtection){
                 float mindst = Float.MAX_VALUE;
                 CoreBuild closest = null;
                 for(TeamData data : state.teams.active){
+                    if(!data.team.rules().protectCores){
+                        continue;
+                    }
+
                     for(CoreBuild tile : data.cores){
                         float dst = tile.dst2(x * tilesize + type.offset, y * tilesize + type.offset);
                         if(dst < mindst){
@@ -228,6 +234,9 @@ public class Build{
             return false;
         }
 
+        //check limits for non-AI teams
+        if(type.isOverPlacementLimit(team)) return false;
+
         int offsetx = -(type.size - 1) / 2;
         int offsety = -(type.size - 1) / 2;
 
@@ -264,7 +273,7 @@ public class Build{
     }
 
     public static @Nullable Building getEnemyOverlap(Block block, Team team, int x, int y){
-        return indexer.findEnemyTile(team, x * tilesize + block.size, y * tilesize + block.size, block.placeOverlapRange + 4f, p -> true);
+        return indexer.findEnemyTile(team, x * tilesize + block.size, y * tilesize + block.size, block.placeOverlapRange + 4f, b -> b.team.rules().checkPlacement);
     }
 
     public static boolean contactsGround(int x, int y, Block block){

@@ -45,14 +45,14 @@ jobs:
         git clone https://github.com/Anuken/Arc ../Arc
         git -C ../Arc checkout "$ARC_HASH"
 
-    # 152 = the Mindustry build AURORA is based on: keeps multiplayer compatibility with v152
-    # — 152 = збірка Mindustry, на якій стоїть AURORA: зберігає мережеву сумісність з v152
+    # 160 = the Mindustry build AURORA is based on: keeps multiplayer compatibility with v160
+    # — 160 = збірка Mindustry, на якій стоїть AURORA: зберігає мережеву сумісність з v160
     # Separate Gradle runs: in one run R8 did not find android's merged_java_res/debug/base.jar.
     # — Окремі запуски Gradle: в одному запуску R8 не знаходив android merged_java_res/debug/base.jar.
     - name: Build jar
       run: |
         chmod +x gradlew
-        ./gradlew desktop:dist -Pbuildversion=152 --stacktrace
+        ./gradlew desktop:dist -Pbuildversion=160 --stacktrace
 
     # Release APK signed with our own key (GitHub secrets), so every release installs over the previous one.
     # android/build.gradle reads ../../bekeystore.jks (next to the repo folder) and keystore_* env when CI=true.
@@ -78,7 +78,7 @@ jobs:
         keystore_alias: ${{ secrets.KEY_ALIAS }}
         keystore_alias_password: ${{ secrets.KEY_PASSWORD }}
       run: |
-        ./gradlew android:assembleRelease -Pbuildversion=152 --no-build-cache --stacktrace || {
+        ./gradlew android:assembleRelease -Pbuildversion=160 --no-build-cache --stacktrace || {
           echo "::group::merged_java_res"; find android/build/intermediates/merged_java_res -maxdepth 3 -ls; echo "::endgroup::"
           exit 1
         }

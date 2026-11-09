@@ -33,6 +33,8 @@ public class Sorter extends Block{
         clearOnDoubleTap = true;
         // AURORA: ulocate filter "transfer" — фільтр ulocate "передача"
         flags = arc.struct.EnumSet.of(BlockFlag.transfer);
+        drawCached = true;
+        drawDynamic = false;
 
         config(Item.class, (SorterBuild tile, Item item) -> tile.sortItem = item);
         configClear((SorterBuild tile) -> tile.sortItem = null);
@@ -67,6 +69,7 @@ public class Sorter extends Block{
             super.configured(player, value);
 
             if(!headless){
+                recache();
                 renderer.minimap.update(tile);
             }
         }

@@ -1,16 +1,18 @@
 package mindustry.world.blocks.defense;
 
+import arc.*;
 import arc.graphics.*;
 import arc.graphics.g2d.*;
 import arc.math.*;
 import arc.util.*;
 import mindustry.annotations.Annotations.*;
+import mindustry.content.*;
 import mindustry.entities.*;
 import mindustry.entities.bullet.*;
 import mindustry.gen.*;
 import mindustry.graphics.*;
 import mindustry.world.*;
-import mindustry.world.meta.BlockFlag;
+import mindustry.world.meta.*;
 
 public class ShockMine extends Block{
     public final int timerDamage = timers++;
@@ -36,6 +38,14 @@ public class ShockMine extends Block{
         // AURORA: ulocate filter "wall" — фільтр ulocate "стіна"
         flags = arc.struct.EnumSet.of(BlockFlag.wall);
     }
+
+    @Override
+    public void setStats(){
+        super.setStats();
+        stats.add(Stat.damage, table -> {
+            table.add((String)(Core.bundle.format("bullet.lightning", tendrils, Strings.autoFixed(damage, 2)).replace("[stat]", "[white]")));
+        });
+    } 
 
     public class ShockMineBuild extends Building{
 
@@ -67,7 +77,7 @@ public class ShockMine extends Block{
 
         public void triggered(){
             for(int i = 0; i < tendrils; i++){
-                Lightning.create(team, lightningColor, damage, x, y, Mathf.random(360f), length);
+                Lightning.create(Bullets.damageLightningGround, team, lightningColor, damage, x, y, Mathf.random(360f), length);
             }
             if(bullet != null){
                 for(int i = 0; i < shots; i++){

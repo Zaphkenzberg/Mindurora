@@ -13,6 +13,10 @@ public class LiquidJunction extends LiquidBlock{
         floating = true;
         // AURORA: ulocate filter "transfer" — фільтр ulocate "передача"
         flags = arc.struct.EnumSet.of(BlockFlag.transfer);
+        destructible = true;
+        update = false;
+        drawCached = true;
+        drawDynamic = false;
     }
 
     @Override

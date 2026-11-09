@@ -16,8 +16,9 @@ public enum BlockFlag{
     ufactory,
     /** Repair point. */
     repair,
-    /** AURORA: block repair: mender, regen projector (ulocate); replaces blockRepair — Ремонт блоків: мендер, регенератор (ulocate); замість blockRepair. */
-    brepair,
+    /** Any block that boosts block health (menders, mend and regen projectors). AURORA: also a ulocate filter
+     * — Блоки, що ремонтують інші блоки (ремонтники, проєктори ремонту й регенерації). AURORA: ще й фільтр ulocate. */
+    blockRepair,
     /** Block that stored power for resupply. */
     battery,
     /** Any reactor block. */
@@ -50,5 +51,5 @@ public enum BlockFlag{
     public final static BlockFlag[] all = values();
 
     /** Values for logic only. Filters out some internal flags. AURORA: + ulocate filters — + фільтри ulocate. */
-    public final static BlockFlag[] allLogic = {core, storage, generator, turret, factory, ufactory, repair, brepair, battery, reactor, drill, shield, wall, overdrive, logic, powernode, transfer};
+    public final static BlockFlag[] allLogic = {core, storage, generator, turret, factory, ufactory, repair, blockRepair, battery, reactor, drill, shield, wall, overdrive, logic, powernode, transfer};
 }
